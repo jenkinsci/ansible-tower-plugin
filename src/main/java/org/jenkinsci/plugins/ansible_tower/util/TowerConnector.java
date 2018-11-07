@@ -404,10 +404,10 @@ public class TowerConnector {
                     Split the string on , and loop over each item
                     Find it in Tower and sort it into its type
          */
-        HashMap<String, Vector<String>> credentials = new HashMap<String, Vector<String>>();
-        credentials.put("vault", new Vector<String>());
-        credentials.put("machine", new Vector<String>());
-        credentials.put("extra", new Vector<String>());
+        HashMap<String, Vector<Integer>> credentials = new HashMap<String, Vector<Integer>>();
+        credentials.put("vault", new Vector<Integer>());
+        credentials.put("machine", new Vector<Integer>());
+        credentials.put("extra", new Vector<Integer>());
         for(String credentialString : credential.split(","))  {
             try {
                 JSONObject jsonCredential = rawLookupByString(credentialString, "/credentials/");
@@ -420,7 +420,7 @@ public class TowerConnector {
                 } else {
                     myCredentialType = "extra";
                 }
-                credentials.get(myCredentialType).add(jsonCredential.getString("id"));
+                credentials.get(myCredentialType).add(jsonCredential.getInt("id"));
             } catch(AnsibleTowerItemDoesNotExist ateide) {
                 throw new AnsibleTowerException("Credential "+ credentialString +" does not exist in tower");
             } catch(AnsibleTowerException ate) {
