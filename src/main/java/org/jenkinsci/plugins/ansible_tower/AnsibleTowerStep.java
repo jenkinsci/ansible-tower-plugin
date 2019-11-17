@@ -29,6 +29,7 @@ import java.util.Properties;
 
 public class AnsibleTowerStep extends AbstractStepImpl {
     private String towerServer              = "";
+    private String towerCredentials         = "";
     private String jobTemplate              = "";
     private String jobType                  = "run";
     private String extraVars                = "";
@@ -47,12 +48,13 @@ public class AnsibleTowerStep extends AbstractStepImpl {
 
     @DataBoundConstructor
     public AnsibleTowerStep(
-            @Nonnull String towerServer, @Nonnull String jobTemplate, String jobType, String extraVars, String jobTags,
+            @Nonnull String towerServer, @Nonnull String towerCredentials, @Nonnull String jobTemplate, String jobType, String extraVars, String jobTags,
             String skipJobTags, String limit, String inventory, String credential, Boolean verbose,
             Boolean importTowerLogs, Boolean removeColor, String templateType, Boolean importWorkflowChildLogs,
             Boolean throwExceptionWhenFail, Boolean async
     ) {
         this.towerServer = towerServer;
+        this.towerCredentials = towerCredentials;
         this.jobTemplate = jobTemplate;
         this.extraVars = extraVars;
         this.jobTags = jobTags;
@@ -74,6 +76,7 @@ public class AnsibleTowerStep extends AbstractStepImpl {
     public String getTowerServer()              { return towerServer; }
     @Nonnull
     public String getJobTemplate()              { return jobTemplate; }
+    public String getTowerCredentials()         { return towerCredentials; }
     public String getExtraVars()                { return extraVars; }
     public String getJobTags()                  { return jobTags; }
     public String getSkipJobTags()              { return skipJobTags; }
@@ -94,6 +97,8 @@ public class AnsibleTowerStep extends AbstractStepImpl {
     @DataBoundSetter
     public void setJobTemplate(String jobTemplate) { this.jobTemplate = jobTemplate; }
     @DataBoundSetter
+    public void setTowerCredentials(String towerCredentials) { this.towerCredentials = towerCredentials; }
+     @DataBoundSetter
     public void setExtraVars(String extraVars) { this.extraVars = extraVars; }
     @DataBoundSetter
     public void setJobTags(String jobTags) { this.jobTags = jobTags; }
@@ -130,6 +135,7 @@ public class AnsibleTowerStep extends AbstractStepImpl {
     @Extension(optional = true)
     public static final class DescriptorImpl extends AbstractStepDescriptorImpl {
         public static final String towerServer              = AnsibleTower.DescriptorImpl.towerServer;
+        public static final String towerCredentials         = AnsibleTower.DescriptorImpl.towerCredentials;
         public static final String jobTemplate              = AnsibleTower.DescriptorImpl.jobTemplate;
         public static final String jobType                  = AnsibleTower.DescriptorImpl.jobType;
         public static final String extraVars                = AnsibleTower.DescriptorImpl.extraVars;
@@ -224,6 +230,8 @@ public class AnsibleTowerStep extends AbstractStepImpl {
             AnsibleTowerRunner runner = new AnsibleTowerRunner();
 
             // Doing this will make the options optional in the pipeline step.
+            String towerCredentials = "";
+            if(step.getTowerCredentials() != null) { towerCredentials = step.getTowerCredentials(); }
             String extraVars = "";
             if(step.getExtraVars() != null) { extraVars = step.getExtraVars(); }
             String limit = "";
@@ -254,7 +262,7 @@ public class AnsibleTowerStep extends AbstractStepImpl {
             if(step.getAsync() != null) { async = step.getAsync(); }
             Properties map = new Properties();
             boolean runResult = runner.runJobTemplate(
-                    listener.getLogger(), step.getTowerServer(), step.getJobTemplate(), jobType, extraVars,
+                    listener.getLogger(), step.getTowerServer(), towerCredentials, step.getJobTemplate(), jobType, extraVars,
                     limit, tags, skipTags, inventory, credential, verbose, importTowerLogs, removeColor, envVars,
                     templateType, importWorkflowChildLogs, ws, run, map, async
             );

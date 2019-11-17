@@ -19,6 +19,7 @@ import hudson.util.ListBoxModel;
 import org.apache.commons.lang.StringUtils;
 import org.kohsuke.stapler.AncestorInPath;
 import org.kohsuke.stapler.DataBoundConstructor;
+import org.kohsuke.stapler.DataBoundSetter;
 import org.kohsuke.stapler.QueryParameter;
 import com.cloudbees.plugins.credentials.CredentialsProvider;
 import com.cloudbees.plugins.credentials.common.StandardUsernameCredentials;
@@ -31,7 +32,7 @@ public class TowerInstallation extends AbstractDescribableImpl<TowerInstallation
 
     private final String towerDisplayName;
     private final String towerURL;
-    private final String towerCredentialsId;
+    private String towerCredentialsId;
     private final boolean towerTrustCert;
     private final boolean enableDebugging;
 
@@ -49,6 +50,9 @@ public class TowerInstallation extends AbstractDescribableImpl<TowerInstallation
     public String getTowerCredentialsId() { return this.towerCredentialsId; }
     public boolean getTowerTrustCert() { return this.towerTrustCert; }
     public boolean getEnableDebugging() { return this.enableDebugging; }
+
+    @DataBoundSetter
+    public void setTowerCredentialsId(String towerCredentialsId) { this.towerCredentialsId = towerCredentialsId; }
 
     public TowerConnector getTowerConnector() {
         return TowerInstallation.getTowerConnectorStatic(this.towerURL, this.towerCredentialsId, this.towerTrustCert, this.enableDebugging);
