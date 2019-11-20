@@ -3,6 +3,9 @@
     <f:entry field="towerServer" title="Tower Server" help="/plugin/ansible-tower/help-towerServer.html">
         <f:select />
     </f:entry>
+    <f:entry field="towerCredentialsId" title="Tower Credentials ID" help="/plugin/ansible-tower/help-towerCredentials.html">
+        <f:select />
+    </f:entry>
     <f:entry field="templateType" title="Template Type" help="/plugin/ansible-tower/help-templateType.html">
         <f:select/>
     </f:entry>
