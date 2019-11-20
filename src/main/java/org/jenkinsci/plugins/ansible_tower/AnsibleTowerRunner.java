@@ -22,18 +22,18 @@ public class AnsibleTowerRunner {
     private TowerJob myJob = null;
 
     public boolean runJobTemplate(
-            PrintStream logger, String towerServer, String towerCredentials, String jobTemplate, String jobType,
+            PrintStream logger, String towerServer, String towerCredentialsId, String jobTemplate, String jobType,
             String extraVars, String limit, String jobTags, String skipJobTags, String inventory, String credential,
             boolean verbose, boolean importTowerLogs, boolean removeColor, EnvVars envVars, String templateType,
             boolean importWorkflowChildLogs, FilePath ws, Run<?, ?> run, Properties towerResults
     ) {
-        return this.runJobTemplate(logger, towerServer, towerCredentials, jobTemplate, jobType, extraVars, limit,
+        return this.runJobTemplate(logger, towerServer, towerCredentialsId, jobTemplate, jobType, extraVars, limit,
                 jobTags, skipJobTags, inventory, credential, verbose, importTowerLogs, removeColor, envVars,
                 templateType, importWorkflowChildLogs, ws, run, towerResults, false);
     }
 
     public boolean runJobTemplate(
-            PrintStream logger, String towerServer, String towerCredentials, String jobTemplate, String jobType,
+            PrintStream logger, String towerServer, String towerCredentialsId, String jobTemplate, String jobType,
             String extraVars, String limit, String jobTags, String skipJobTags, String inventory, String credential,
             boolean verbose, boolean importTowerLogs, boolean removeColor, EnvVars envVars, String templateType,
             boolean importWorkflowChildLogs, FilePath ws, Run<?, ?> run, Properties towerResults, boolean async
@@ -49,8 +49,12 @@ public class AnsibleTowerRunner {
             return false;
         }
 
-        if(towerCredentials != null && towerCredentials.equals("")) {
-            towerConfigToRunOn.setTowerCredentialsId(towerCredentials);
+        if(towerCredentialsId != null && !towerCredentialsId.equals("")) {
+            towerConfigToRunOn.setTowerCredentialsId(towerCredentialsId);
+        }
+
+        if(run != null) {
+            towerConfigToRunOn.setRun(run);
         }
 
         TowerConnector myTowerConnection = towerConfigToRunOn.getTowerConnector();
