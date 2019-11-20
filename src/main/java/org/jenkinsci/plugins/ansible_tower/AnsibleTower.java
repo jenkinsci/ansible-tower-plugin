@@ -89,7 +89,7 @@ public class AnsibleTower extends Builder {
 	@DataBoundSetter
 	public void setJobTemplate(String jobTemplate) { this.jobTemplate = jobTemplate; }
 	@DataBoundSetter
-	public void setTowerCredentialsId(String towerCredentials) { this.towerCredentialsId = towerCredentialsId; }
+	public void setTowerCredentialsId(String towerCredentialsId) { this.towerCredentialsId = towerCredentialsId; }
 	@DataBoundSetter
 	public void setExtraVars(String extraVars) { this.extraVars = extraVars; }
 	@DataBoundSetter
