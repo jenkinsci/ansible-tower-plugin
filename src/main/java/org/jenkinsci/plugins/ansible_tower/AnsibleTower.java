@@ -28,7 +28,7 @@ public class AnsibleTower extends Builder {
 
 	private @Nonnull String towerServer     = DescriptorImpl.towerServer;
 	private @Nonnull String jobTemplate     = DescriptorImpl.jobTemplate;
-	private String towerCredentials         = DescriptorImpl.towerCredentials;
+	private String towerCredentialsId       = DescriptorImpl.towerCredentialsId;
 	private String extraVars                = DescriptorImpl.extraVars;
 	private String jobTags                  = DescriptorImpl.jobTags;
 	private String skipJobTags              = DescriptorImpl.skipJobTags;
@@ -44,14 +44,14 @@ public class AnsibleTower extends Builder {
 
 	@DataBoundConstructor
 	public AnsibleTower(
-			@Nonnull String towerServer, @Nonnull String jobTemplate, String towerCredentials, String jobType,
+			@Nonnull String towerServer, @Nonnull String jobTemplate, String towerCredentialsId, String jobType,
 			String extraVars, String jobTags, String skipJobTags, String limit, String inventory, String credential,
 			Boolean verbose, Boolean importTowerLogs, Boolean removeColor, String templateType,
 			Boolean importWorkflowChildLogs
 	) {
 		this.towerServer = towerServer;
 		this.jobTemplate = jobTemplate;
-		this.towerCredentials = towerCredentials;
+		this.towerCredentialsId = towerCredentialsId;
 		this.extraVars = extraVars;
 		this.jobTags = jobTags;
 		this.skipJobTags = skipJobTags;
@@ -70,7 +70,7 @@ public class AnsibleTower extends Builder {
 	public String getTowerServer() { return towerServer; }
 	@Nonnull
 	public String getJobTemplate() { return jobTemplate; }
-	public String getTowerCredentials() { return towerCredentials; }
+	public String getTowerCredentialsId() { return towerCredentialsId; }
 	public String getExtraVars() { return extraVars; }
 	public String getJobTags() { return jobTags; }
 	public String getSkipJobTags() { return skipJobTags; }
@@ -89,7 +89,7 @@ public class AnsibleTower extends Builder {
 	@DataBoundSetter
 	public void setJobTemplate(String jobTemplate) { this.jobTemplate = jobTemplate; }
 	@DataBoundSetter
-	public void setTowerCredentials(String towerCredentials) { this.towerCredentials = towerCredentials; }
+	public void setTowerCredentialsId(String towerCredentials) { this.towerCredentialsId = towerCredentialsId; }
 	@DataBoundSetter
 	public void setExtraVars(String extraVars) { this.extraVars = extraVars; }
 	@DataBoundSetter
@@ -133,7 +133,7 @@ public class AnsibleTower extends Builder {
 
 		// here we just pass a map as we don't case for non pipeline jobs
 		boolean runResult = runner.runJobTemplate(
-				listener.getLogger(), this.getTowerServer(), this.towerCredentials, this.getJobTemplate(),
+				listener.getLogger(), this.getTowerServer(), this.towerCredentialsId, this.getJobTemplate(),
 				this.getJobType(),this.getExtraVars(), this.getLimit(), this.getJobTags(), this.getSkipJobTags(),
 				this.getInventory(), this.getCredential(), this.verbose, this.importTowerLogs, this.getRemoveColor(),
 				envVars, templateType, importWorkflowChildLogs, build.getWorkspace(), build, new Properties()
@@ -151,7 +151,7 @@ public class AnsibleTower extends Builder {
     public static final class DescriptorImpl extends BuildStepDescriptor<Builder> {
         public static final String towerServer    			= "";
         public static final String jobTemplate    			= "";
-        public static final String towerCredentials			= "";
+        public static final String towerCredentialsId   	= "";
 		public static final String extraVars      			= "";
 		public static final String limit          			= "";
         public static final String jobTags        			= "";
