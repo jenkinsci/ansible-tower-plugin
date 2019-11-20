@@ -5,9 +5,13 @@ package org.jenkinsci.plugins.ansible_tower.util;
  */
 
 import static com.cloudbees.plugins.credentials.CredentialsMatchers.instanceOf;
+
+import com.cloudbees.plugins.credentials.Credentials;
 import com.cloudbees.plugins.credentials.common.StandardListBoxModel;
 import com.cloudbees.plugins.credentials.common.UsernamePasswordCredentials;
 import com.cloudbees.plugins.credentials.common.StandardUsernamePasswordCredentials;
+import com.cloudbees.plugins.credentials.domains.DomainRequirement;
+import hudson.model.Run;
 import jenkins.model.Jenkins;
 import org.jenkinsci.plugins.plaincredentials.StringCredentials;
 import hudson.Extension;
@@ -19,7 +23,6 @@ import hudson.util.ListBoxModel;
 import org.apache.commons.lang.StringUtils;
 import org.kohsuke.stapler.AncestorInPath;
 import org.kohsuke.stapler.DataBoundConstructor;
-import org.kohsuke.stapler.DataBoundSetter;
 import org.kohsuke.stapler.QueryParameter;
 import com.cloudbees.plugins.credentials.CredentialsProvider;
 import com.cloudbees.plugins.credentials.common.StandardUsernameCredentials;
@@ -35,6 +38,7 @@ public class TowerInstallation extends AbstractDescribableImpl<TowerInstallation
     private String towerCredentialsId;
     private final boolean towerTrustCert;
     private final boolean enableDebugging;
+    private Run run;
 
     @DataBoundConstructor
     public TowerInstallation(String towerDisplayName, String towerURL, String towerCredentialsId, boolean towerTrustCert, boolean enableDebugging) {
@@ -51,34 +55,53 @@ public class TowerInstallation extends AbstractDescribableImpl<TowerInstallation
     public boolean getTowerTrustCert() { return this.towerTrustCert; }
     public boolean getEnableDebugging() { return this.enableDebugging; }
 
-    @DataBoundSetter
     public void setTowerCredentialsId(String towerCredentialsId) { this.towerCredentialsId = towerCredentialsId; }
+    public void setRun(Run run) { this.run = run; }
 
     public TowerConnector getTowerConnector() {
-        return TowerInstallation.getTowerConnectorStatic(this.towerURL, this.towerCredentialsId, this.towerTrustCert, this.enableDebugging);
+        return TowerInstallation.getTowerConnectorStatic(this.towerURL, this.towerCredentialsId, this.towerTrustCert,
+                this.enableDebugging, this.run);
     }
 
-    public static TowerConnector getTowerConnectorStatic(String towerURL, String towerCredentialsId, boolean trustCert, boolean enableDebugging) {
+    public static TowerConnector getTowerConnectorStatic(String towerURL, String towerCredentialsId, boolean trustCert,
+                                                         boolean enableDebugging, Run run) {
         String username = null;
         String password = null;
         String oauth_token = null;
-        if(StringUtils.isNotBlank(towerCredentialsId)) {
-            List<StandardUsernamePasswordCredentials> credsList = CredentialsProvider.lookupCredentials(StandardUsernamePasswordCredentials.class);
-            for(StandardUsernamePasswordCredentials creds : credsList) {
-                if(creds.getId().equals(towerCredentialsId)) {
+        if (StringUtils.isNotBlank(towerCredentialsId)) {
+            List<StandardUsernamePasswordCredentials> credsList = getCredsList(StandardUsernamePasswordCredentials.class, run);
+            for (StandardUsernamePasswordCredentials creds : credsList) {
+                if (creds.getId().equals(towerCredentialsId)) {
                     username = creds.getUsername();
                     password = creds.getPassword().getPlainText();
                 }
             }
-            List<StringCredentials> secretList = CredentialsProvider.lookupCredentials(StringCredentials.class);
-            for(StringCredentials secret : secretList) {
-                if(secret.getId().equals(towerCredentialsId)) {
+            List<StringCredentials> secretList = getCredsList(StringCredentials.class, run);
+            for (StringCredentials secret : secretList) {
+                if (secret.getId().equals(towerCredentialsId)) {
                     oauth_token = secret.getSecret().getPlainText();
                 }
             }
         }
         TowerConnector testConnector = new TowerConnector(towerURL, username, password, oauth_token, trustCert, enableDebugging);
         return testConnector;
+    }
+
+    private static <C extends Credentials> List<C> getCredsList(Class<C> type, Run run) {
+        List<C> credsList;
+
+        if (run != null) {
+            try {
+                credsList = CredentialsProvider.lookupCredentials(type,
+                        run.getParent(), null, new DomainRequirement());
+            } catch (NullPointerException e) {
+                credsList = CredentialsProvider.lookupCredentials(type);
+            }
+        } else {
+            credsList = CredentialsProvider.lookupCredentials(type);
+        }
+
+        return credsList;
     }
 
     @Extension
@@ -94,12 +117,12 @@ public class TowerInstallation extends AbstractDescribableImpl<TowerInstallation
         ) {
             // Also, validate that we are an Administrator
             Jenkins.getInstance().checkPermission(Jenkins.ADMINISTER);
-            TowerLogger.writeMessage("Starting to test connection with ("+ towerURL +") and ("+ towerCredentialsId +") and ("+ towerTrustCert +") with debugging ("+ enableDebugging +")");
-            TowerConnector testConnector = TowerInstallation.getTowerConnectorStatic(towerURL, towerCredentialsId, towerTrustCert, enableDebugging);
+            TowerLogger.writeMessage("Starting to test connection with (" + towerURL + ") and (" + towerCredentialsId + ") and (" + towerTrustCert + ") with debugging (" + enableDebugging + ")");
+            TowerConnector testConnector = TowerInstallation.getTowerConnectorStatic(towerURL, towerCredentialsId, towerTrustCert, enableDebugging, null);
             try {
                 testConnector.testConnection();
                 return FormValidation.ok("Success");
-            } catch(Exception e) {
+            } catch (Exception e) {
                 return FormValidation.error(e.getMessage());
             }
         }
