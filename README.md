@@ -70,6 +70,7 @@ In a freestyle project a new build step called Ansible Tower is now available:
 | Field | Description |
 |-------|-------------|
 | Tower Server | The predefined Ansible Tower server to run the template on.|
+| Tower Credentials ID | Allows to overwrite the credentials from global Ansible Tower configuration|
 | Template Type | Whether you are running a job or workflow template.|
 | Template ID | The name or numerical ID of the template to be run on the Ansible Tower server.|
 | Extra Vars | Additional variables to be passed to the job. I.e.:<br/>---<br/>my_var: This is a variable called my_var|
@@ -93,6 +94,7 @@ node {
     stage('MyStage') {
         ansibleTower(
             towerServer: 'Prod Tower',
+            towerCredentialsId: '',
             templateType: 'job',
             jobTemplate: 'Simple Test',
             importTowerLogs: true,
