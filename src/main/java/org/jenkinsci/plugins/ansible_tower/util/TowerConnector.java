@@ -514,8 +514,8 @@ public class TowerConnector implements Serializable {
             postBody.put("credentials", allCredentials);
         } else {
             // We need to pass individual fields
-            if(credentials.get("machine").size() > 0) { postBody.put("credential", credentials.get("machine").get(0)); }
-            if(credentials.get("vault").size() > 0) { postBody.put("vault_credential", credentials.get("vault").get(0)); }
+            if(credentials.get("machine").size() > 0) { postBody.put("credentials", credentials.get("machine")); }
+            if(credentials.get("vault").size() > 0) { postBody.put("vault_credential", credentials.get("vault")); }
             if(credentials.get("extra").size() > 0) {
                 JSONArray extraCredentials = new JSONArray();
                 extraCredentials.addAll(credentials.get("extra"));
