@@ -365,6 +365,20 @@ If you try to export a variable but don't have the EnvInject plugin installed th
     Found environment variables to inject but the EnvInject plugin was not found
 ```
 
+* Important note: if you do use this plugin as a part of Jenkins Pipeline (under a script {} section) it is possible that you may not be able to access return values from Env variables. Only way to return and access values would be pipeline returns. Please see below. Reason:
+source: https://plugins.jenkins.io/envinject/
+```text
+Even though it is possible to set up the EnvInject Job Property and build step in Pipeline, the plugin does not provide full compatibility with Jenkins Pipeline.
+
+Supported use-cases:
+
+    Injection of EnvVars defined in the "Properties Content" field of the Job Property
+        These EnvVars are being injected to the script environment and will be inaccessible via the "env" Pipeline global variable
+        Please note there is also a known compatibility issue with Durable Task Plugin 1.13
+
+All other use-cases of the plugin may work incorrectly in Jenkins Pipeline. Please see JENKINS-42614 for more information about unsupported use-cases. There is no short-term plan to fix the compatibility issues though any pull requests to the plugin will be appreciated.
+```
+
 ### Pipeline returns
 
 When running under a pipeline, the EnvInject plugin is not required. The environment variables will either be:
@@ -387,7 +401,7 @@ node {
                 verbose: true,
             )
              
-            sh 'env'
+            sh 'env' // this may not always work
         }
         println(results.JOB_ID)
         println(results.value)
@@ -395,7 +409,75 @@ node {
 }
 ```
 
-For a job run, there are three special variables in results: 
+Another example could be as follows:
+```grrovy
+pipeline {
+    agent any
+    environment {
+        MY_ENV_VAR='' // not recommended, only for demonstration
+    }
+    stages {
+      stage('Tower') {
+            steps{
+                script{
+                    results=ansibleTower(
+                        importTowerLogs: true,
+                        importWorkflowChildLogs: false,
+                        jobTemplate: 'Demo Set Stats template',
+                        jobType: 'run',
+                        removeColor: false,
+                        templateType: 'job',
+                        throwExceptionWhenFail: false,
+                        towerCredentialsId: '5a55e074-d8c3-474e-b0de-c2f3af738c3c',
+                        towerServer: 'infra-ansible-tower',
+                        verbose: true
+                    )
+                    print(results['vm1']);
+                    print(results.vm2);
+                    $MY_ENV_VAR=results.toString(); // not recommended
+                }
+            }
+        }
+      stage('output'){
+          steps{
+              print(results['vm1']);
+              print(results.vm2);
+              echo $MY_ENV_VAR // not recommended
+          }
+      }
+    }
+}
+```
+
+In this example you can see that we are setting `results` variable and accessing it in the stage `Tower` as well as in the following stage `output`. You may skip the definition and use of `$MY_ENV_VAR`, but it is shown here as to how you can get the data in Env var. One of the disadvantage with Env var is that if you are getting return value other than a `String` (which is the case in this plugin) you may fail to set and use the env var correctly. Hence its recommended to not use Env var method.
+
+Above example of pipeline uses a playbook that looks like this:
+```
+---
+- name: Set stats sample play
+  hosts: localhost
+  connection: local
+  vars:
+    vm1:
+      name: Test stats
+      vm_name: test-vm-1
+      ip_addr: 10.x.x.x
+      description: some descriptive text
+    vm2:
+      name: Test stats
+      vm_name: test-vm-2
+      ip_addr: 10.x.x.x
+      description: some descriptive text
+  tasks:
+    - name: Set stats for demo
+      set_stats:
+        data:
+          JENKINS_EXPORT:
+            - vm1: "{{ vm1 }}"
+            - vm2: "{{ vm2 }}"
+```
+
+For a job run, there are three special variables in results:
 
 * JOB_ID - a string containing the Tower ID number of the job
 * JOB_URL - a string containing the URL to the job in Tower
