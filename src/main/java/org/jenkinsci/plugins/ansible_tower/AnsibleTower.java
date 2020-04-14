@@ -41,6 +41,7 @@ public class AnsibleTower extends Builder {
     private String limit                    = DescriptorImpl.limit;
     private String inventory                = DescriptorImpl.inventory;
     private String credential               = DescriptorImpl.credential;
+	private String scmBranch                = DescriptorImpl.scmBranch;
     private Boolean verbose                 = DescriptorImpl.verbose;
     private Boolean importTowerLogs			= DescriptorImpl.importTowerLogs;
     private Boolean removeColor				= DescriptorImpl.removeColor;
@@ -50,7 +51,7 @@ public class AnsibleTower extends Builder {
 	@DataBoundConstructor
 	public AnsibleTower(
 			@Nonnull String towerServer, @Nonnull String jobTemplate, String towerCredentialsId, String jobType,
-			String extraVars, String jobTags, String skipJobTags, String limit, String inventory, String credential,
+			String extraVars, String jobTags, String skipJobTags, String limit, String inventory, String credential, String scmBranch,
 			Boolean verbose, Boolean importTowerLogs, Boolean removeColor, String templateType,
 			Boolean importWorkflowChildLogs
 	) {
@@ -64,6 +65,7 @@ public class AnsibleTower extends Builder {
 		this.limit = limit;
 		this.inventory = inventory;
 		this.credential = credential;
+		this.scmBranch = scmBranch;
 		this.verbose = verbose;
 		this.importTowerLogs = importTowerLogs;
 		this.removeColor = removeColor;
@@ -83,6 +85,7 @@ public class AnsibleTower extends Builder {
 	public String getLimit() { return limit; }
 	public String getInventory() { return inventory; }
 	public String getCredential() { return credential; }
+	public String getScmBranch() { return scmBranch; }
 	public Boolean getVerbose() { return verbose; }
 	public Boolean getImportTowerLogs() { return importTowerLogs; }
 	public Boolean getRemoveColor() { return removeColor; }
@@ -109,6 +112,8 @@ public class AnsibleTower extends Builder {
 	public void setInventory(String inventory) { this.inventory = inventory; }
 	@DataBoundSetter
 	public void setCredential(String credential) { this.credential = credential; }
+	@DataBoundSetter
+	public void setScmBranch(String scmBranch) { this.scmBranch = scmBranch; }
 	@DataBoundSetter
 	public void setVerbose(Boolean verbose) { this.verbose = verbose; }
 	@DataBoundSetter
@@ -140,7 +145,7 @@ public class AnsibleTower extends Builder {
 		boolean runResult = runner.runJobTemplate(
 				listener.getLogger(), this.getTowerServer(), this.towerCredentialsId, this.getJobTemplate(),
 				this.getJobType(),this.getExtraVars(), this.getLimit(), this.getJobTags(), this.getSkipJobTags(),
-				this.getInventory(), this.getCredential(), this.verbose, this.importTowerLogs, this.getRemoveColor(),
+				this.getInventory(), this.getCredential(), this.getScmBranch(), this.verbose, this.importTowerLogs, this.getRemoveColor(),
 				envVars, templateType, importWorkflowChildLogs, build.getWorkspace(), build, new Properties()
 		);
 		if(runResult) {
@@ -164,6 +169,7 @@ public class AnsibleTower extends Builder {
 		public static final String jobType					= "run";
 		public static final String inventory      			= "";
 		public static final String credential     			= "";
+		public static final String scmBranch     			= "";
 		public static final Boolean verbose       			= false;
 		public static final Boolean importTowerLogs			= false;
 		public static final Boolean removeColor				= false;

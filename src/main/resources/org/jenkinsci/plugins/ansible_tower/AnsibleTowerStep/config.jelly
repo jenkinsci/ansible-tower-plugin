@@ -33,6 +33,9 @@
     <f:entry field="credential" title="Credential" help="/plugin/ansible-tower/help-credential.html">
         <f:textbox />
     </f:entry>
+    <f:entry field="scmBranch" title="scmBranch" help="/plugin/ansible-tower/help-credential.html">
+        <f:textbox />
+    </f:entry>
     <f:entry field="verbose" title="Verbose" help="/plugin/ansible-tower/help-verbose.html">
         <f:checkbox />
     </f:entry>

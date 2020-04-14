@@ -538,7 +538,7 @@ public class TowerConnector implements Serializable {
     }
 
 
-    public int submitTemplate(int jobTemplate, String extraVars, String limit, String jobTags, String skipJobTags, String jobType, String inventory, String credential, String templateType) throws AnsibleTowerException {
+    public int submitTemplate(int jobTemplate, String extraVars, String limit, String jobTags, String skipJobTags, String jobType, String inventory, String credential, String scmBranch, String templateType) throws AnsibleTowerException {
         checkTemplateType(templateType);
 
         String apiEndPoint = "/job_templates/";
@@ -577,6 +577,9 @@ public class TowerConnector implements Serializable {
         }
         if(extraVars != null && !extraVars.isEmpty()) {
             postBody.put("extra_vars", extraVars);
+        }
+        if(scmBranch != null && !scmBranch.isEmpty()) {
+            postBody.put("scm_branch", scmBranch);
         }
         HttpResponse response = makeRequest(POST, apiEndPoint + jobTemplate + "/launch/", postBody);
 

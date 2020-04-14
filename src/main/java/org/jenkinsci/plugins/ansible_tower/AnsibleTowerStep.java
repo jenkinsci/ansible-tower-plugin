@@ -36,6 +36,7 @@ public class AnsibleTowerStep extends AbstractStepImpl {
     private String skipJobTags              = "";
     private String inventory                = "";
     private String credential               = "";
+    private String scmBranch                = "";
     private Boolean verbose                 = false;
     private Boolean importTowerLogs         = false;
     private Boolean removeColor             = false;
@@ -47,7 +48,7 @@ public class AnsibleTowerStep extends AbstractStepImpl {
     @DataBoundConstructor
     public AnsibleTowerStep(
             @Nonnull String towerServer, @Nonnull String towerCredentialsId, @Nonnull String jobTemplate, String jobType, String extraVars, String jobTags,
-            String skipJobTags, String limit, String inventory, String credential, Boolean verbose,
+            String skipJobTags, String limit, String inventory, String credential, String scmBranch, Boolean verbose,
             Boolean importTowerLogs, Boolean removeColor, String templateType, Boolean importWorkflowChildLogs,
             Boolean throwExceptionWhenFail, Boolean async
     ) {
@@ -61,6 +62,7 @@ public class AnsibleTowerStep extends AbstractStepImpl {
         this.limit = limit;
         this.inventory = inventory;
         this.credential = credential;
+        this.scmBranch = scmBranch;
         this.verbose = verbose;
         this.importTowerLogs = importTowerLogs;
         this.removeColor = removeColor;
@@ -82,6 +84,7 @@ public class AnsibleTowerStep extends AbstractStepImpl {
     public String getLimit()                    { return limit; }
     public String getInventory()                { return inventory; }
     public String getCredential()               { return credential; }
+    public String getScmBranch()                { return scmBranch; }
     public Boolean getVerbose()                 { return verbose; }
     public Boolean getImportTowerLogs()         { return importTowerLogs; }
     public Boolean getRemoveColor()             { return removeColor; }
@@ -111,6 +114,8 @@ public class AnsibleTowerStep extends AbstractStepImpl {
     @DataBoundSetter
     public void setCredential(String credential) { this.credential = credential; }
     @DataBoundSetter
+	public void setScmBranch(String scmBranch) { this.scmBranch = scmBranch; }
+	@DataBoundSetter
     public void setVerbose(Boolean verbose) { this.verbose = verbose; }
     @DataBoundSetter
     public void setImportTowerLogs(Boolean importTowerLogs) { this.importTowerLogs = importTowerLogs; }
@@ -142,6 +147,7 @@ public class AnsibleTowerStep extends AbstractStepImpl {
         public static final String skipJobTags              = AnsibleTower.DescriptorImpl.skipJobTags;
         public static final String inventory                = AnsibleTower.DescriptorImpl.inventory;
         public static final String credential               = AnsibleTower.DescriptorImpl.credential;
+        public static final String scmBranch                = AnsibleTower.DescriptorImpl.scmBranch;
         public static final Boolean verbose                 = AnsibleTower.DescriptorImpl.verbose;
         public static final Boolean importTowerLogs         = AnsibleTower.DescriptorImpl.importTowerLogs;
         public static final Boolean removeColor             = AnsibleTower.DescriptorImpl.removeColor;
@@ -248,6 +254,8 @@ public class AnsibleTowerStep extends AbstractStepImpl {
             if(step.getInventory() != null) { inventory = step.getInventory(); }
             String credential = "";
             if(step.getCredential() != null) { credential = step.getCredential(); }
+            String scmBranch = "";
+            if(step.getScmBranch() != null) { scmBranch = step.getScmBranch(); }
             boolean verbose = false;
             if(step.getVerbose() != null) { verbose = step.getVerbose(); }
             boolean importTowerLogs = false;
@@ -265,7 +273,7 @@ public class AnsibleTowerStep extends AbstractStepImpl {
             Properties map = new Properties();
             boolean runResult = runner.runJobTemplate(
                     listener.getLogger(), step.getTowerServer(), towerCredentialsId, step.getJobTemplate(), jobType, extraVars,
-                    limit, tags, skipTags, inventory, credential, verbose, importTowerLogs, removeColor, envVars,
+                    limit, tags, skipTags, inventory, credential, scmBranch, verbose, importTowerLogs, removeColor, envVars,
                     templateType, importWorkflowChildLogs, ws, run, map, async
             );
             if(!runResult && throwExceptionWhenFail) {

@@ -23,18 +23,18 @@ public class AnsibleTowerRunner {
 
     public boolean runJobTemplate(
             PrintStream logger, String towerServer, String towerCredentialsId, String jobTemplate, String jobType,
-            String extraVars, String limit, String jobTags, String skipJobTags, String inventory, String credential,
+            String extraVars, String limit, String jobTags, String skipJobTags, String inventory, String credential, String scmBranch,
             boolean verbose, boolean importTowerLogs, boolean removeColor, EnvVars envVars, String templateType,
             boolean importWorkflowChildLogs, FilePath ws, Run<?, ?> run, Properties towerResults
     ) {
         return this.runJobTemplate(logger, towerServer, towerCredentialsId, jobTemplate, jobType, extraVars, limit,
-                jobTags, skipJobTags, inventory, credential, verbose, importTowerLogs, removeColor, envVars,
+                jobTags, skipJobTags, inventory, credential, scmBranch, verbose, importTowerLogs, removeColor, envVars,
                 templateType, importWorkflowChildLogs, ws, run, towerResults, false);
     }
 
     public boolean runJobTemplate(
             PrintStream logger, String towerServer, String towerCredentialsId, String jobTemplate, String jobType,
-            String extraVars, String limit, String jobTags, String skipJobTags, String inventory, String credential,
+            String extraVars, String limit, String jobTags, String skipJobTags, String inventory, String credential, String scmBranch,
             boolean verbose, boolean importTowerLogs, boolean removeColor, EnvVars envVars, String templateType,
             boolean importWorkflowChildLogs, FilePath ws, Run<?, ?> run, Properties towerResults, boolean async
     ) {
@@ -88,6 +88,9 @@ public class AnsibleTowerRunner {
         if (credential != null && credential.equals("")) {
             credential = null;
         }
+        if (scmBranch != null && scmBranch.equals("")) {
+            scmBranch = null;
+        }
 
         // Expand all of the parameters
         String expandedJobTemplate = envVars.expand(jobTemplate);
@@ -97,6 +100,7 @@ public class AnsibleTowerRunner {
         String expandedSkipJobTags = envVars.expand(skipJobTags);
         String expandedInventory = envVars.expand(inventory);
         String expandedCredential = envVars.expand(credential);
+        //String expandedScmBranch = envVars.expand(scmBranch);
 
         if (verbose) {
             if (expandedJobTemplate != null && !expandedJobTemplate.equals(jobTemplate)) {
@@ -120,6 +124,9 @@ public class AnsibleTowerRunner {
             if (expandedCredential != null && !expandedCredential.equals(credential)) {
                 logger.println("Expanded credentials to " + expandedCredential);
             }
+            // if (expandedScmBranch != null && !expandedScmBranch.equals(scmBranch)) {
+            //     logger.println("Expanded scmBranch to " + expandedScmBranch);
+            // }
         }
 
         if (expandedJobTags != null && expandedJobTags.equalsIgnoreCase("")) {
@@ -181,7 +188,7 @@ public class AnsibleTowerRunner {
         }
 
         try {
-            this.myJob.setJobId(myTowerConnection.submitTemplate(template.getInt("id"), expandedExtraVars, expandedLimit, expandedJobTags, expandedSkipJobTags, jobType, expandedInventory, expandedCredential, templateType));
+            this.myJob.setJobId(myTowerConnection.submitTemplate(template.getInt("id"), expandedExtraVars, expandedLimit, expandedJobTags, expandedSkipJobTags, jobType, expandedInventory, expandedCredential, scmBranch, templateType));
         } catch (AnsibleTowerException e) {
             logger.println("ERROR: Unable to request job template invocation " + e.getMessage());
             myTowerConnection.releaseToken();
