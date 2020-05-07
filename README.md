@@ -410,7 +410,7 @@ node {
 ```
 
 Another example could be as follows:
-```grrovy
+```groovy
 pipeline {
     agent any
     environment {
