@@ -100,7 +100,7 @@ public class AnsibleTowerRunner {
         String expandedSkipJobTags = envVars.expand(skipJobTags);
         String expandedInventory = envVars.expand(inventory);
         String expandedCredential = envVars.expand(credential);
-        //String expandedScmBranch = envVars.expand(scmBranch);
+        String expandedScmBranch = envVars.expand(scmBranch);
 
         if (verbose) {
             if (expandedJobTemplate != null && !expandedJobTemplate.equals(jobTemplate)) {
@@ -124,9 +124,9 @@ public class AnsibleTowerRunner {
             if (expandedCredential != null && !expandedCredential.equals(credential)) {
                 logger.println("Expanded credentials to " + expandedCredential);
             }
-            // if (expandedScmBranch != null && !expandedScmBranch.equals(scmBranch)) {
-            //     logger.println("Expanded scmBranch to " + expandedScmBranch);
-            // }
+            if (expandedScmBranch != null && !expandedScmBranch.equals(scmBranch)) {
+                logger.println("Expanded scmBranch to " + expandedScmBranch);
+            }
         }
 
         if (expandedJobTags != null && expandedJobTags.equalsIgnoreCase("")) {
