@@ -174,12 +174,8 @@ public class TowerConnector implements Serializable {
                 myRequest = new HttpPatch(myURI);
             }
             if (body != null && !body.isEmpty()) {
-                try {
-                    StringEntity bodyEntity = new StringEntity(body.toString());
-                    myRequest.setEntity(bodyEntity);
-                } catch (UnsupportedEncodingException uee) {
-                    throw new AnsibleTowerException("Unable to encode body as JSON: " + uee.getMessage());
-                }
+                StringEntity bodyEntity = new StringEntity(body.toString(),"UTF-8");
+                myRequest.setEntity(bodyEntity);
             }
             request = myRequest;
             request.setHeader("Content-Type", "application/json");
