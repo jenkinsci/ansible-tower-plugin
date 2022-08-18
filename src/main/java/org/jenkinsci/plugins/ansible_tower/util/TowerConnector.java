@@ -1045,7 +1045,7 @@ public class TowerConnector implements Serializable {
         if (templateType.equalsIgnoreCase(TowerConnector.JOB_TEMPLATE_TYPE)) {
             returnURL += "jobs";
         } else {
-            returnURL += "workflows";
+            returnURL += "jobs/workflow";
         }
         returnURL += "/"+ myJobID;
         return returnURL;
