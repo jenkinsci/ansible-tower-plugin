@@ -996,6 +996,9 @@ public class TowerConnector implements Serializable {
                         if(this.getFullLogs) {
                             try {
                                 stdOut = eventObject.getJSONObject("event_data").getJSONObject("res").getString("msg");
+                                if ("".equals(stdOut)){
+                                    stdOut = eventObject.getJSONObject("event_data").getJSONObject("res").getString("stdout");
+                                }
                             } catch (Exception e) {
                                 // If we don't have this its ok, not all messages will have the res
                             }
