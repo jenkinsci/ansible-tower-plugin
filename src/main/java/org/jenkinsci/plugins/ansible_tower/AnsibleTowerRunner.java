@@ -203,7 +203,7 @@ public class AnsibleTowerRunner {
         }
 
         try {
-            this.myJob.setJobId(myTowerConnection.submitTemplate(template.getInt("id"), expandedExtraVars, expandedLimit, expandedJobTags, expandedSkipJobTags, jobType, expandedInventory, expandedCredential, expandedScmBranch, templateType));
+            this.myJob.setJobId(myTowerConnection.submitTemplate(template.getLong("id"), expandedExtraVars, expandedLimit, expandedJobTags, expandedSkipJobTags, jobType, expandedInventory, expandedCredential, expandedScmBranch, templateType));
         } catch (AnsibleTowerException e) {
             logger.println("ERROR: Unable to request job template invocation " + e.getMessage());
             myTowerConnection.releaseToken();
@@ -213,7 +213,7 @@ public class AnsibleTowerRunner {
         String jobURL = myTowerConnection.getJobURL(this.myJob.getJobID(), templateType);
         logger.println("Template Job URL: " + jobURL);
 
-        towerResults.put("JOB_ID", Integer.toString(this.myJob.getJobID()));
+        towerResults.put("JOB_ID", Long.toString(this.myJob.getJobID()));
         towerResults.put("JOB_URL", jobURL);
 
         if (async) {
