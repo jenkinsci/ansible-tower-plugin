@@ -14,7 +14,7 @@ public class TowerProjectSync implements Serializable {
     private TowerConnector connection = null;
     private TowerProject projectReference = null;
     private JSONObject syncData = null;
-    private int lastLogId = 0;
+    private long lastLogId = 0L;
 
     public TowerProjectSync(TowerConnector connection, TowerProject projectReference) throws AnsibleTowerException {
         this.connection = connection;
@@ -90,7 +90,7 @@ public class TowerProjectSync implements Serializable {
                 }
                 if (responseObject.containsKey("results")) {
                     for (Object anEvent : responseObject.getJSONArray("results")) {
-                        Integer eventId = ((JSONObject) anEvent).getInt("id");
+                        long eventId = ((JSONObject) anEvent).getLong("id");
                         String stdOut = ((JSONObject) anEvent).getString("stdout");
                         events.addAll(connection.logLine(stdOut));
                         if (eventId > this.lastLogId) { this.lastLogId = eventId; }
@@ -114,11 +114,11 @@ public class TowerProjectSync implements Serializable {
     }
 
     public String getURL() {
-        return connection.getURL() +"/#/jobs/project/"+ syncData.getInt("id");
+        return connection.getURL() +"/#/jobs/project/"+ syncData.getLong("id");
     }
 
-    public Integer getID() {
-        return syncData.getInt("id");
+    public long getID() {
+        return syncData.getLong("id");
     }
 
     public void releaseToken() throws AnsibleTowerException {
