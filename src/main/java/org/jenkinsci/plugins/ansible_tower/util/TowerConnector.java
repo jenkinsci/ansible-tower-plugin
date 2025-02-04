@@ -60,8 +60,8 @@ public class TowerConnector implements Serializable {
     private boolean trustAllCerts = true;
     private boolean importChildWorkflowLogs = false;
     private TowerLogger logger = new TowerLogger();
-    private HashMap<Integer, Integer> logIdForWorkflows = new HashMap<Integer, Integer>();
-    private HashMap<Integer, Integer> logIdForJobs = new HashMap<Integer, Integer>();
+    private HashMap<Long, Long> logIdForWorkflows = new HashMap<Long, Long>();
+    private HashMap<Long, Long> logIdForJobs = new HashMap<Long, Long>();
 
     private boolean removeColor = true;
     private boolean getFullLogs = false;
@@ -491,23 +491,23 @@ public class TowerConnector implements Serializable {
             throw new AnsibleTowerException("Unable to find both machine and vault credentials type");
         }
 
-        int machine_credential_type = -1;
-        int vault_credential_type = -1;
+        long machine_credential_type = -1L;
+        long vault_credential_type = -1L;
         JSONArray credentialTypesArray = responseObject.getJSONArray("results");
         Iterator<JSONObject> listIterator = credentialTypesArray.iterator();
         while(listIterator.hasNext()) {
             JSONObject aCredentialType = listIterator.next();
             if(aCredentialType.getString("kind").equalsIgnoreCase("ssh")) {
-                machine_credential_type = aCredentialType.getInt("id");
+                machine_credential_type = aCredentialType.getLong("id");
             } else if(aCredentialType.getString("kind").equalsIgnoreCase("vault")) {
-                vault_credential_type = aCredentialType.getInt("id");
+                vault_credential_type = aCredentialType.getLong("id");
             }
         }
 
-        if (vault_credential_type == -1) {
+        if (vault_credential_type == -1L) {
             logger.logMessage("[ERROR]: Unable to find vault credential type");
         }
-        if (machine_credential_type == -1) {
+        if (machine_credential_type == -1L) {
             logger.logMessage("[ERROR]: Unable to find machine credential type");
         }
         /*
@@ -520,10 +520,10 @@ public class TowerConnector implements Serializable {
                     Split the string on , and loop over each item
                     Find it in Tower and sort it into its type
          */
-        HashMap<String, Vector<Integer>> credentials = new HashMap<String, Vector<Integer>>();
-        credentials.put("vault", new Vector<Integer>());
-        credentials.put("machine", new Vector<Integer>());
-        credentials.put("extra", new Vector<Integer>());
+        HashMap<String, Vector<Long>> credentials = new HashMap<String, Vector<Long>>();
+        credentials.put("vault", new Vector<Long>());
+        credentials.put("machine", new Vector<Long>());
+        credentials.put("extra", new Vector<Long>());
         for(String credentialString : credential.split(","))  {
             try {
                 JSONObject jsonCredential = rawLookupByString(credentialString, "/credentials/");
@@ -536,7 +536,7 @@ public class TowerConnector implements Serializable {
                 } else {
                     myCredentialType = "extra";
                 }
-                credentials.get(myCredentialType).add(jsonCredential.getInt("id"));
+                credentials.get(myCredentialType).add(jsonCredential.getLong("id"));
             } catch(AnsibleTowerItemDoesNotExist ateide) {
                 throw new AnsibleTowerException("Credential "+ credentialString +" does not exist in tower");
             } catch(AnsibleTowerException ate) {
@@ -580,7 +580,7 @@ public class TowerConnector implements Serializable {
     }
 
 
-    public int submitTemplate(int jobTemplate, String extraVars, String limit, String jobTags, String skipJobTags, String jobType, String inventory, String credential, String scmBranch, String templateType) throws AnsibleTowerException {
+    public long submitTemplate(long jobTemplate, String extraVars, String limit, String jobTags, String skipJobTags, String jobType, String inventory, String credential, String scmBranch, String templateType) throws AnsibleTowerException {
         checkTemplateType(templateType);
 
         String apiEndPoint = "/job_templates/";
@@ -636,7 +636,7 @@ public class TowerConnector implements Serializable {
             }
 
             if (responseObject.containsKey("id")) {
-                return responseObject.getInt("id");
+                return responseObject.getLong("id");
             }
             logger.logMessage(json);
             throw new AnsibleTowerException("Did not get an ID from the request. Template response can be found in the jenkins.log");
@@ -676,7 +676,7 @@ public class TowerConnector implements Serializable {
         throw new AnsibleTowerException("Template type can only be '"+ JOB_TEMPLATE_TYPE +"' or '"+ WORKFLOW_TEMPLATE_TYPE+"'");
     }
 
-    public boolean isJobCompleted(int jobID, String templateType) throws AnsibleTowerException {
+    public boolean isJobCompleted(long jobID, String templateType) throws AnsibleTowerException {
         checkTemplateType(templateType);
 
         String apiEndpoint = "/jobs/"+ jobID +"/";
@@ -725,7 +725,7 @@ public class TowerConnector implements Serializable {
         }
     }
 
-    public void cancelJob(int jobID, String templateType) throws AnsibleTowerException {
+    public void cancelJob(long jobID, String templateType) throws AnsibleTowerException {
         checkTemplateType(templateType);
 
         String apiEndpoint = "/jobs/"+ jobID +"/";
@@ -792,11 +792,11 @@ public class TowerConnector implements Serializable {
      * Use isJobCompleted
      */
     @Deprecated
-    public boolean isJobCommpleted(int jobID, String templateType) throws AnsibleTowerException {
+    public boolean isJobCommpleted(long jobID, String templateType) throws AnsibleTowerException {
         return isJobCompleted(jobID, templateType);
     }
 
-    public Vector<String> getLogEvents(int jobID, String templateType) throws AnsibleTowerException {
+    public Vector<String> getLogEvents(long jobID, String templateType) throws AnsibleTowerException {
         Vector<String> events = new Vector<String>();
         checkTemplateType(templateType);
         if(templateType.equalsIgnoreCase(JOB_TEMPLATE_TYPE)) {
@@ -812,9 +812,9 @@ public class TowerConnector implements Serializable {
     private static String UNIFIED_JOB_TYPE = "unified_job_type";
     private static String UNIFIED_JOB_TEMPLATE = "unified_job_template";
 
-    private Vector<String> logWorkflowEvents(int jobID, boolean importWorkflowChildLogs) throws AnsibleTowerException {
+    private Vector<String> logWorkflowEvents(long jobID, boolean importWorkflowChildLogs) throws AnsibleTowerException {
         Vector<String> events = new Vector<String>();
-        if(!this.logIdForWorkflows.containsKey(jobID)) { this.logIdForWorkflows.put(jobID, 0); }
+        if(!this.logIdForWorkflows.containsKey(jobID)) { this.logIdForWorkflows.put(jobID, 0L); }
         HttpResponse response = makeRequest(GET, "/workflow_jobs/"+ jobID +"/workflow_nodes/?id__gt="+this.logIdForWorkflows.get(jobID));
 
         if(response.getStatusLine().getStatusCode() == 200) {
@@ -832,7 +832,7 @@ public class TowerConnector implements Serializable {
             if(responseObject.containsKey("results")) {
                 for(Object anEventObject : responseObject.getJSONArray("results")) {
                     JSONObject anEvent = (JSONObject) anEventObject;
-                    Integer eventId = anEvent.getInt("id");
+                    long eventId = anEvent.getLong("id");
 
                     if(!anEvent.containsKey("summary_fields")) { continue; }
 
@@ -859,16 +859,16 @@ public class TowerConnector implements Serializable {
                     }
 
                     if(eventId > this.logIdForWorkflows.get(jobID)) { this.logIdForWorkflows.put(jobID, eventId); }
-                    events.addAll(logLine(job.getString("name") +" => "+ job.getString("status") +" "+ this.getJobURL(job.getInt("id"), JOB_TEMPLATE_TYPE)));
+                    events.addAll(logLine(job.getString("name") +" => "+ job.getString("status") +" "+ this.getJobURL(job.getLong("id"), JOB_TEMPLATE_TYPE)));
 
                     if(importWorkflowChildLogs) {
                         if(templateType.getString(UNIFIED_JOB_TYPE).equalsIgnoreCase("job")) {
                             // We only need to call this once because the job is completed at this point
-                            events.addAll(logJobEvents(job.getInt("id")));
+                            events.addAll(logJobEvents(job.getLong("id")));
                         } else if(templateType.getString(UNIFIED_JOB_TYPE).equalsIgnoreCase("project_update")) {
-                            events.addAll(logProjectSync(job.getInt("id")));
+                            events.addAll(logProjectSync(job.getLong("id")));
                         } else if(templateType.getString(UNIFIED_JOB_TYPE).equalsIgnoreCase("inventory_update")) {
-                            events.addAll(logInventorySync(job.getInt("id")));
+                            events.addAll(logInventorySync(job.getLong("id")));
                         } else {
                             events.addAll(logLine("Unknown job type in workflow: "+ templateType.getString(UNIFIED_JOB_TYPE)));
                         }
@@ -912,7 +912,7 @@ public class TowerConnector implements Serializable {
     }
 
 
-    private Vector<String> logInventorySync(int syncID) throws AnsibleTowerException {
+    private Vector<String> logInventorySync(long syncID) throws AnsibleTowerException {
         Vector<String> events = new Vector<String>();
         // These are not normal logs, so we don't need to paginate
         String apiURL = "/inventory_updates/"+ syncID +"/";
@@ -939,7 +939,7 @@ public class TowerConnector implements Serializable {
     }
 
 
-    private Vector<String> logProjectSync(int syncID) throws AnsibleTowerException {
+    private Vector<String> logProjectSync(long syncID) throws AnsibleTowerException {
         Vector<String> events = new Vector<String>();
         // These are not normal logs, so we don't need to paginate
         String apiURL = "/project_updates/"+ syncID +"/";
@@ -965,9 +965,9 @@ public class TowerConnector implements Serializable {
         return events;
     }
 
-    private Vector<String> logJobEvents(int jobID) throws AnsibleTowerException {
+    private Vector<String> logJobEvents(long jobID) throws AnsibleTowerException {
         Vector<String> events = new Vector<String>();
-        if(!this.logIdForJobs.containsKey(jobID)) { this.logIdForJobs.put(jobID, 0); }
+        if(!this.logIdForJobs.containsKey(jobID)) { this.logIdForJobs.put(jobID, 0L); }
         boolean keepChecking = true;
         while(keepChecking) {
             String apiURL = "/jobs/" + jobID + "/job_events/?id__gt="+ this.logIdForJobs.get(jobID);
@@ -991,7 +991,7 @@ public class TowerConnector implements Serializable {
                 if (responseObject.containsKey("results")) {
                     for (Object anEvent : responseObject.getJSONArray("results")) {
                         JSONObject eventObject = (JSONObject) anEvent;
-                        Integer eventId = eventObject.getInt("id");
+                        long eventId = eventObject.getLong("id");
                         String stdOut = eventObject.getString("stdout");
                         if(this.getFullLogs) {
                             try {
@@ -1013,7 +1013,7 @@ public class TowerConnector implements Serializable {
         return events;
     }
 
-    public boolean isJobFailed(int jobID, String templateType) throws AnsibleTowerException {
+    public boolean isJobFailed(long jobID, String templateType) throws AnsibleTowerException {
         checkTemplateType(templateType);
 
         String apiEndPoint = "/jobs/"+ jobID +"/";
@@ -1040,7 +1040,7 @@ public class TowerConnector implements Serializable {
         }
     }
 
-    public String getJobURL(int myJobID, String templateType) {
+    public String getJobURL(long myJobID, String templateType) {
         String returnURL = url +"/#/";
         if (templateType.equalsIgnoreCase(TowerConnector.JOB_TEMPLATE_TYPE)) {
             returnURL += "jobs";
