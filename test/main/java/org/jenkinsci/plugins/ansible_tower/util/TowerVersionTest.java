@@ -5,7 +5,6 @@ import org.hamcrest.CoreMatchers;
 import org.jenkinsci.plugins.ansible_tower.exceptions.AnsibleTowerException;
 import org.junit.Assert;
 import org.junit.Rule;
-import org.junit.Test;
 import org.junit.experimental.runners.Enclosed;
 import org.junit.rules.ExpectedException;
 import org.junit.runner.RunWith;
