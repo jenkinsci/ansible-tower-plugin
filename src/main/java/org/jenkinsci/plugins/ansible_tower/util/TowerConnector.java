@@ -48,15 +48,19 @@ public class TowerConnector implements Serializable {
     public static final String JOB_TEMPLATE_TYPE = "job";
     public static final String WORKFLOW_TEMPLATE_TYPE = "workflow";
     private static final String ARTIFACTS = "artifacts";
-    private static String API_VERSION = "v2";
+    private static final String LEGACY_CONTROLLER_API_BASE = "/api/v2";
+    private static final String GATEWAY_CONTROLLER_API_BASE = "/api/controller/v2";
+    private static final String GATEWAY_TOKEN_API_BASE = "/api/gateway/v1";
 
     private String authorizationHeader = null;
     private String oauthToken = null;
     private String oAuthTokenID = null;
+    private String oAuthTokenApiBase = null;
     private String url = null;
     private String username = null;
     private String password = null;
     private TowerVersion towerVersion = null;
+    private String controllerApiBase = null;
     private boolean trustAllCerts = true;
     private boolean importChildWorkflowLogs = false;
     private TowerLogger logger = new TowerLogger();
@@ -70,11 +74,7 @@ public class TowerConnector implements Serializable {
     public TowerConnector(String url, String username, String password) { this(url, username, password, null, false, false); }
 
     public TowerConnector(String url, String username, String password, String oauthToken, Boolean trustAllCerts, Boolean debug) {
-        // Credit to https://stackoverflow.com/questions/7438612/how-to-remove-the-last-character-from-a-string
-        if(url != null && url.length() > 0 && url.charAt(url.length() - 1) == '/') {
-            url = url.substring(0, (url.length() - 1));
-        }
-        this.url = url;
+        this.url = normalizeBaseUrl(url);
         this.username = username;
         this.password = password;
         this.oauthToken = oauthToken;
@@ -86,7 +86,36 @@ public class TowerConnector implements Serializable {
         } catch(AnsibleTowerException ate) {
             logger.logMessage("Failed to get connection to get version; auth errors may ensue "+ ate);
         }
-        logger.logMessage("Created a connector with "+ username +"@"+ url);
+        logger.logMessage("Created a connector with "+ username +"@"+ this.url);
+    }
+
+    /*
+        Jenkins stores the server URL, not a specific API prefix.
+        Normalizing here lets admins paste either the platform root or a full API URL without
+        forcing the rest of the connector to special-case those inputs.
+     */
+    private String normalizeBaseUrl(String configuredUrl) {
+        if(configuredUrl == null) {
+            return null;
+        }
+
+        String normalizedUrl = configuredUrl;
+        if(normalizedUrl.length() > 0 && normalizedUrl.charAt(normalizedUrl.length() - 1) == '/') {
+            normalizedUrl = normalizedUrl.substring(0, (normalizedUrl.length() - 1));
+        }
+
+        String[] knownApiBases = new String[] {
+                GATEWAY_CONTROLLER_API_BASE,
+                LEGACY_CONTROLLER_API_BASE,
+                GATEWAY_TOKEN_API_BASE
+        };
+        for(String apiBase : knownApiBases) {
+            if(normalizedUrl.endsWith(apiBase)) {
+                return normalizedUrl.substring(0, normalizedUrl.length() - apiBase.length());
+            }
+        }
+
+        return normalizedUrl;
     }
 
     public void setTrustAllCerts(boolean trustAllCerts) {
@@ -135,13 +164,90 @@ public class TowerConnector implements Serializable {
         }
     }
 
-    private String buildEndpoint(String endpoint) {
+    /*
+        AAP 2.5+ moved controller resources from /api/v2 to /api/controller/v2 behind the platform gateway.
+        We resolve that prefix lazily by probing the unauthenticated ping endpoint and then reuse it for the
+        rest of the controller API calls.
+     */
+    private String buildEndpoint(String endpoint) throws AnsibleTowerException {
         if(endpoint.startsWith("/api/")) { return endpoint; }
 
-        String full_endpoint = "/api/"+ API_VERSION;
+        String full_endpoint = getControllerApiBase();
         if(!endpoint.startsWith("/")) { full_endpoint += "/"; }
         full_endpoint += endpoint;
         return full_endpoint;
+    }
+
+    private String getControllerApiBase() throws AnsibleTowerException {
+        if(this.controllerApiBase != null) {
+            return this.controllerApiBase;
+        }
+
+        /*
+            The ping endpoint is available without authentication and exists on both the legacy
+            controller API and the newer gateway-backed controller API. That makes it a safe way
+            to discover which controller prefix this server expects before we start authenticating.
+         */
+        if(endpointExists(GATEWAY_CONTROLLER_API_BASE + "/ping/")) {
+            this.controllerApiBase = GATEWAY_CONTROLLER_API_BASE;
+        } else if(endpointExists(LEGACY_CONTROLLER_API_BASE + "/ping/")) {
+            this.controllerApiBase = LEGACY_CONTROLLER_API_BASE;
+        } else {
+            throw new AnsibleTowerException("Unable to determine the controller API base for " + this.url);
+        }
+
+        logger.logMessage("Resolved controller API base to " + this.controllerApiBase);
+        return this.controllerApiBase;
+    }
+
+    private boolean endpointExists(String endpoint) throws AnsibleTowerException {
+        URI myURI;
+        try {
+            myURI = new URI(url + endpoint);
+        } catch(Exception e) {
+            throw new AnsibleTowerException("Unable to construct URL for " + endpoint + ": " + e.getMessage());
+        }
+
+        DefaultHttpClient httpClient = getHttpClient();
+        HttpResponse response;
+        try {
+            response = httpClient.execute(new HttpGet(myURI));
+        } catch(Exception e) {
+            throw new AnsibleTowerException("Unable to probe endpoint " + endpoint + ": " + e.getMessage());
+        }
+
+        try {
+            if(response.getEntity() != null) {
+                EntityUtils.consume(response.getEntity());
+            }
+        } catch(IOException ioe) {
+            logger.logMessage("Unable to consume probe response for " + endpoint + ": " + ioe.getMessage());
+        }
+
+        /*
+            We only need to distinguish "definitely not this API family" from "this path exists but may
+            still require auth or return a redirect/proxy response". A 404 means the prefix is wrong;
+            anything else is treated as a usable signal for endpoint discovery.
+         */
+        return response.getStatusLine().getStatusCode() != 404;
+    }
+
+    private List<String> getOAuthTokenApiBases() {
+        List<String> tokenApiBases = new ArrayList<String>();
+        try {
+            if(GATEWAY_CONTROLLER_API_BASE.equals(this.getControllerApiBase())) {
+                tokenApiBases.add(GATEWAY_TOKEN_API_BASE);
+                tokenApiBases.add(LEGACY_CONTROLLER_API_BASE);
+            } else {
+                tokenApiBases.add(LEGACY_CONTROLLER_API_BASE);
+                tokenApiBases.add(GATEWAY_TOKEN_API_BASE);
+            }
+        } catch(AnsibleTowerException ate) {
+            // If detection failed earlier, try the modern gateway path first and then fall back.
+            tokenApiBases.add(GATEWAY_TOKEN_API_BASE);
+            tokenApiBases.add(LEGACY_CONTROLLER_API_BASE);
+        }
+        return tokenApiBases;
     }
 
     private HttpResponse makeRequest(int requestType, String endpoint) throws AnsibleTowerException {
@@ -200,18 +306,25 @@ public class TowerConnector implements Serializable {
                 } else if(this.username != null && this.password != null) {
                     // Second, if we have a username and a password we can try to go get a token
 
-                    // For trying to get a token, we will first attempt to self create an oAuthToken if Tower supports it
-                    if (this.towerSupports("/api/o/")) {
-                        logger.logMessage("Getting an oAuth token for "+ this.username);
-                        try {
-                            this.authorizationHeader = "Bearer " + this.getOAuthToken();
-                        } catch(AnsibleTowerException ate) {
-                            logger.logMessage("Unable to get oAuth Toekn: "+ ate.getMessage());
-                        }
+                    /*
+                        AAP 2.5+ issues OAuth tokens from the gateway API, while older Tower/AAP releases
+                        use controller-local token endpoints. Try the token flows first and only fall back
+                        to legacy auth/basic auth if none of them are available.
+                     */
+                    logger.logMessage("Getting an oAuth token for "+ this.username);
+                    try {
+                        this.authorizationHeader = "Bearer " + this.getOAuthToken();
+                    } catch(AnsibleTowerException ate) {
+                        logger.logMessage("Unable to get oAuth token: "+ ate.getMessage());
                     }
 
+                    /*
+                        Legacy authtoken support is kept for older Tower/AAP instances that predate the
+                        newer gateway token model. If neither token flow is available we fall back to
+                        basic auth to preserve the plugin's historical behavior.
+                     */
                     // Second, we will try to get a legacy authtoken if Tower supports if
-                    if(this.authorizationHeader == null && this.towerSupports("/api/v2/authtoken")) {
+                    if(this.authorizationHeader == null && this.towerSupports(LEGACY_CONTROLLER_API_BASE + "/authtoken")) {
                         logger.logMessage("Getting a legacy token for " + this.username);
                         try {
                             this.authorizationHeader = "Token " + this.getAuthToken();
@@ -314,7 +427,7 @@ public class TowerConnector implements Serializable {
 
 
     private boolean towerSupports(String end_point) throws AnsibleTowerException {
-        // To determine if we support oAuth we will be making a HEAD call to /api/o to see what happens
+        // We use a lightweight HEAD request for legacy endpoint checks where the path is already known.
 
         URI myURI;
         try {
@@ -1058,21 +1171,54 @@ public class TowerConnector implements Serializable {
     }
 
     private String getOAuthToken() throws AnsibleTowerException {
-        String tokenURI = url + this.buildEndpoint("/tokens/");
-        HttpPost oauthTokenRequest = new HttpPost(tokenURI);
-        oauthTokenRequest.setHeader(HttpHeaders.AUTHORIZATION, this.getBasicAuthString());
-        JSONObject body = new JSONObject();
-        body.put("description", "Jenkins Token");
-        body.put("application", null);
-        body.put("scope", "write");
-        try {
-            StringEntity bodyEntity = new StringEntity(body.toString());
-            oauthTokenRequest.setEntity(bodyEntity);
-        } catch(UnsupportedEncodingException uee) {
-            throw new AnsibleTowerException("Unable to encode body as JSON: "+ uee.getMessage());
+        AnsibleTowerException lastException = null;
+        for(String tokenApiBase : this.getOAuthTokenApiBases()) {
+            try {
+                return this.requestOAuthToken(tokenApiBase);
+            } catch(AnsibleTowerDoesNotSupportAuthToken adnsat) {
+                lastException = adnsat;
+            } catch(AnsibleTowerRefusesToGiveToken atrtgt) {
+                lastException = atrtgt;
+            } catch(AnsibleTowerException ate) {
+                lastException = ate;
+            }
         }
 
-        oauthTokenRequest.setHeader("Content-Type", "application/json");
+        if(lastException != null) {
+            throw lastException;
+        }
+        throw new AnsibleTowerException("Unable to get oauth token from any supported endpoint");
+    }
+
+    /*
+        Token creation moved to /api/gateway/v1/tokens/ in newer AAP releases.
+        Older Tower/AAP releases still use /api/v2/tokens/, so we preserve that request shape as a fallback.
+     */
+    private String requestOAuthToken(String tokenApiBase) throws AnsibleTowerException {
+        this.oAuthTokenApiBase = null;
+        String tokenURI = url + tokenApiBase + "/tokens/";
+        HttpPost oauthTokenRequest = new HttpPost(tokenURI);
+        oauthTokenRequest.setHeader(HttpHeaders.AUTHORIZATION, this.getBasicAuthString());
+
+        /*
+            Older controller-local token creation expects the JSON body the plugin has always sent.
+            Newer gateway token creation is intentionally left body-less because the gateway owns the
+            token lifecycle and no longer uses the older controller-specific payload shape.
+         */
+        if(LEGACY_CONTROLLER_API_BASE.equals(tokenApiBase)) {
+            JSONObject body = new JSONObject();
+            body.put("description", "Jenkins Token");
+            body.put("application", null);
+            body.put("scope", "write");
+            try {
+                StringEntity bodyEntity = new StringEntity(body.toString());
+                oauthTokenRequest.setEntity(bodyEntity);
+            } catch(UnsupportedEncodingException uee) {
+                throw new AnsibleTowerException("Unable to encode body as JSON: "+ uee.getMessage());
+            }
+
+            oauthTokenRequest.setHeader("Content-Type", "application/json");
+        }
 
         DefaultHttpClient httpClient = getHttpClient();
         HttpResponse response;
@@ -1107,7 +1253,8 @@ public class TowerConnector implements Serializable {
         }
 
         if (responseObject.containsKey("token")) {
-            logger.logMessage("AuthToken acquired ("+ this.oAuthTokenID +")");
+            this.oAuthTokenApiBase = tokenApiBase;
+            logger.logMessage("AuthToken acquired ("+ this.oAuthTokenID +") from " + tokenApiBase);
             return responseObject.getString("token");
         }
         logger.logMessage(json);
@@ -1117,7 +1264,7 @@ public class TowerConnector implements Serializable {
     private String getAuthToken() throws AnsibleTowerException {
         logger.logMessage("Getting auth token for "+ this.username);
 
-        String tokenURI = url + this.buildEndpoint("/authtoken/");
+        String tokenURI = url + LEGACY_CONTROLLER_API_BASE + "/authtoken/";
         HttpPost tokenRequest = new HttpPost(tokenURI);
         tokenRequest.setHeader(HttpHeaders.AUTHORIZATION, this.getBasicAuthString());
         JSONObject body = new JSONObject();
@@ -1170,7 +1317,9 @@ public class TowerConnector implements Serializable {
         if(this.oAuthTokenID != null) {
             logger.logMessage("Deleting oAuth token "+ this.oAuthTokenID +" for " + this.username);
             try {
-                String tokenURI = url + this.buildEndpoint("/tokens/" + this.oAuthTokenID + "/");
+                // Delete the token from the same API family that created it so mixed-version fallback stays safe.
+                String tokenApiBase = this.oAuthTokenApiBase == null ? LEGACY_CONTROLLER_API_BASE : this.oAuthTokenApiBase;
+                String tokenURI = url + tokenApiBase + "/tokens/" + this.oAuthTokenID + "/";
                 HttpDelete tokenRequest = new HttpDelete(tokenURI);
                 tokenRequest.setHeader(HttpHeaders.AUTHORIZATION, this.getBasicAuthString());
 
@@ -1185,6 +1334,7 @@ public class TowerConnector implements Serializable {
                 logger.logMessage("oAuth Token deleted");
 
                 this.oAuthTokenID = null;
+                this.oAuthTokenApiBase = null;
                 this.authorizationHeader = null;
             } catch(Exception e) {
                 logger.logMessage("Failed to delete token: "+ e.getMessage());
