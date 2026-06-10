@@ -1,4 +1,4 @@
 <?jelly escape-by-default='true'?>
 <div>
-    This plugin connects Jenkins with Ansible Tower
+    This plugin connects Jenkins with Ansible Automation Platform
 </div>

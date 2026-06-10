@@ -9,14 +9,14 @@
     </parent>
 
     <groupId>org.jenkins-ci.plugins</groupId>
-    <artifactId>ansible-tower</artifactId>
+    <artifactId>ansible-aap</artifactId>
     <version>0.17.1-SNAPSHOT</version>
     <packaging>hpi</packaging>
-    <name>Ansible Tower Plugin</name>
+    <name>Ansible Automation Platform Plugin</name>
     <description>
-        This plugin allows Jenkins to run a job template in Ansible Tower.
+        This plugin allows Jenkins to run a job template in Ansible Automation Platform.
     </description>
-    <url>https://github.com/jenkinsci/ansible-tower-plugin</url>
+    <url>https://github.com/jenkinsci/ansible-aap-plugin</url>
     <licenses>
         <license>
             <name>MIT license</name>
@@ -33,10 +33,10 @@
     </developers>
 
     <scm>
-        <connection>scm:git:ssh://github.com/jenkinsci/ansible-tower-plugin.git</connection>
-        <developerConnection>scm:git:ssh://git@github.com/jenkinsci/ansible-tower-plugin.git</developerConnection>
-        <url>https://github.com/jenkinsci/ansible-tower-plugin</url>
-        <tag>ansible-tower-0.17.0</tag>
+        <connection>scm:git:ssh://github.com/jenkinsci/ansible-aap-plugin.git</connection>
+        <developerConnection>scm:git:ssh://git@github.com/jenkinsci/ansible-aap-plugin.git</developerConnection>
+        <url>https://github.com/jenkinsci/ansible-aap-plugin</url>
+        <tag>ansible-aap-0.17.0</tag>
     </scm>
 
     <properties>

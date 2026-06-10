@@ -1,0 +1,51 @@
+<?jelly escape-by-default='true'?>
+<j:jelly xmlns:j="jelly:core" xmlns:c="/lib/credentials" xmlns:f="/lib/form">
+    <f:entry field="aapServer" title="AAP Server" help="/plugin/ansible-aap/help-aapServer.html">
+        <f:select />
+    </f:entry>
+    <f:entry field="aapCredentialsId" title="AAP Credentials Override" help="/plugin/ansible-aap/help-aapCredentials.html">
+        <c:select includeUser="true"/>
+    </f:entry>
+    <f:entry field="templateType" title="Template Type" help="/plugin/ansible-aap/help-templateType.html">
+        <f:select/>
+    </f:entry>
+    <f:entry field="jobTemplate" title="Template ID" help="/plugin/ansible-aap/help-templateId.html">
+        <f:textbox />
+    </f:entry>
+    <f:entry field="extraVars" title="Extra Vars" help="/plugin/ansible-aap/help-extraVars.html">
+        <f:textarea />
+    </f:entry>
+    <f:entry field="jobTags" title="Job Tags" help="/plugin/ansible-aap/help-jobTags.html">
+        <f:textbox />
+    </f:entry>
+    <f:entry field="skipJobTags" title="Skip Job Tags" help="/plugin/ansible-aap/help-skipJobTags.html">
+        <f:textbox />
+    </f:entry>
+    <f:entry field="jobType" title="Job Type" help="/plugin/ansible-aap/help-jobType.html">
+        <f:select/>
+    </f:entry>
+    <f:entry field="limit" title="Limit" help="/plugin/ansible-aap/help-limit.html">
+        <f:textbox />
+    </f:entry>
+    <f:entry field="inventory" title="Inventory" help="/plugin/ansible-aap/help-inventory.html">
+        <f:textbox />
+    </f:entry>
+    <f:entry field="credential" title="Credential" help="/plugin/ansible-aap/help-credential.html">
+        <f:textbox />
+    </f:entry>
+    <f:entry field="scmBranch" title="SCM Branch" help="/plugin/ansible-aap/help-scmBranch.html">
+        <f:textbox />
+    </f:entry>
+    <f:entry field="verbose" title="Verbose" help="/plugin/ansible-aap/help-verbose.html">
+        <f:checkbox />
+    </f:entry>
+    <f:entry field="importAAPLogs" title="Import AAP Output" help="/plugin/ansible-aap/help-import-aap-output.html">
+        <f:select />
+    </f:entry>
+    <f:entry field="importWorkflowChildLogs" title="Import Workflow Child Output" help="/plugin/ansible-aap/help-import-workflow-child-output.html">
+        <f:checkbox />
+    </f:entry>
+    <f:entry field="removeColor" title="Remove Color" help="/plugin/ansible-aap/help-remove-color.html">
+        <f:checkbox />
+    </f:entry>
+</j:jelly>

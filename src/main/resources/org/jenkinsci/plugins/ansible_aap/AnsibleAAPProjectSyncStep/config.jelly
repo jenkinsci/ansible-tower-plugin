@@ -1,0 +1,27 @@
+<?jelly escape-by-default='true'?>
+<j:jelly xmlns:j="jelly:core" xmlns:c="/lib/credentials" xmlns:f="/lib/form">
+    <f:entry field="aapServer" title="AAP Server" help="/plugin/ansible-aap/help-aapServer.html">
+        <f:select />
+    </f:entry>
+    <f:entry field="aapCredentialsId" title="AAP Credentials Override" help="/plugin/ansible-aap/help-aapCredentials.html">
+        <c:select includeUser="true"/>
+    </f:entry>
+    <f:entry field="project" title="Project Name" help="/plugin/ansible-aap/help-project.html">
+        <f:textbox/>
+    </f:entry>
+    <f:entry field="verbose" title="Verbose" help="/plugin/ansible-aap/help-verbose.html">
+        <f:checkbox />
+    </f:entry>
+    <f:entry field="importAAPLogs" title="Import AAP Output" help="/plugin/ansible-aap/help-import-aap-output.html">
+        <f:checkbox />
+    </f:entry>
+    <f:entry field="removeColor" title="Remove Color" help="/plugin/ansible-aap/help-remove-color.html">
+        <f:checkbox />
+    </f:entry>
+    <f:entry field="throwExceptionWhenFail" title="Throw exception on failure" help="/plugin/ansible-aap/help-throwExceptionWhenFail.html">
+        <f:checkbox />
+    </f:entry>
+    <f:entry field="async" title="Run Async" help="/plugin/ansible-aap/help-async.html">
+        <f:checkbox />
+    </f:entry>
+</j:jelly>

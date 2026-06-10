@@ -1,0 +1,18 @@
+<?jelly escape-by-default='true'?>
+<j:jelly xmlns:j="jelly:core" xmlns:c="/lib/credentials" xmlns:f="/lib/form">
+    <f:entry field="aapServer" title="AAP Server" help="/plugin/ansible-aap/help-aapServer.html">
+        <f:select />
+    </f:entry>
+    <f:entry field="aapCredentialsId" title="AAP Credentials Override" help="/plugin/ansible-aap/help-aapCredentials.html">
+        <c:select includeUser="true"/>
+    </f:entry>
+    <f:entry field="project" title="Project Name" help="/plugin/ansible-aap/help-project.html">
+        <f:textbox/>
+    </f:entry>
+    <f:entry field="revision" title="Revision" help="/plugin/ansible-aap/help-project-revision.html">
+        <f:textbox/>
+    </f:entry>
+    <f:entry field="verbose" title="Verbose" help="/plugin/ansible-aap/help-verbose.html">
+        <f:checkbox />
+    </f:entry>
+</j:jelly>

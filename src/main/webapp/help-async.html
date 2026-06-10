@@ -1,10 +1,10 @@
 <div>
-    If checked, the job will be launched in Tower and will then return immedatly.
+    If checked, the job will be launched in AAP and will then return immedatly.
     You can capture the object returned like this:
-    tower_job =
+    aap_job =
     Things you might want to do with this object:
-       tower_job.isComplete() - returns true of false or throws an AnsibleTowerException
-       tower_job.getLogs() - returns a Vector&lt;String&gt; of all the logs or throws an AnsibleTowerException
-       tower_job.getExports() - returns a HashMap&lt;String, String&gt; or throws an AnsibleTowerException
+       aap_job.isComplete() - returns true of false or throws an AnsibleAAPException
+       aap_job.getLogs() - returns a Vector&lt;String&gt; of all the logs or throws an AnsibleAAPException
+       aap_job.getExports() - returns a HashMap&lt;String, String&gt; or throws an AnsibleAAPException
         <b>Note:</b> you should not call getExports until getLogs is run
 </div>
