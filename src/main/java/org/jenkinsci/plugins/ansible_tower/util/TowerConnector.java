@@ -54,6 +54,7 @@ public class TowerConnector implements Serializable {
     private String oauthToken = null;
     private String oAuthTokenID = null;
     private String url = null;
+    private String displayURL = null;
     private String username = null;
     private String password = null;
     private TowerVersion towerVersion = null;
@@ -67,14 +68,16 @@ public class TowerConnector implements Serializable {
     private boolean getFullLogs = false;
     private HashMap<String, String> jenkinsExports = new HashMap<String, String>();
 
-    public TowerConnector(String url, String username, String password) { this(url, username, password, null, false, false); }
+    public TowerConnector(String url, String username, String password) { this(url, username, password, null, false, false, null); }
 
     public TowerConnector(String url, String username, String password, String oauthToken, Boolean trustAllCerts, Boolean debug) {
+        this(url, username, password, oauthToken, trustAllCerts, debug, null);
+    }
+
+    public TowerConnector(String url, String username, String password, String oauthToken, Boolean trustAllCerts, Boolean debug, String displayURL) {
         // Credit to https://stackoverflow.com/questions/7438612/how-to-remove-the-last-character-from-a-string
-        if(url != null && url.length() > 0 && url.charAt(url.length() - 1) == '/') {
-            url = url.substring(0, (url.length() - 1));
-        }
-        this.url = url;
+        this.url = normalizeBaseURL(url);
+        this.displayURL = normalizeBaseURL(displayURL);
         this.username = username;
         this.password = password;
         this.oauthToken = oauthToken;
@@ -99,6 +102,16 @@ public class TowerConnector implements Serializable {
     public void setGetWorkflowChildLogs(boolean importChildWorkflowLogs) { this.importChildWorkflowLogs = importChildWorkflowLogs; }
     public void setGetFullLogs(boolean getFullLogs) { this.getFullLogs = getFullLogs; }
     public HashMap<String, String> getJenkinsExports() { return jenkinsExports; }
+
+    private String normalizeBaseURL(String baseURL) {
+        if(baseURL != null) {
+            baseURL = baseURL.trim();
+            if(baseURL.length() > 0 && baseURL.charAt(baseURL.length() - 1) == '/') {
+                baseURL = baseURL.substring(0, (baseURL.length() - 1));
+            }
+        }
+        return baseURL;
+    }
 
     private DefaultHttpClient getHttpClient() throws AnsibleTowerException {
         URI myURI = null;
@@ -1041,14 +1054,19 @@ public class TowerConnector implements Serializable {
     }
 
     public String getJobURL(long myJobID, String templateType) {
-        String returnURL = url +"/#/";
+        String returnURL = getUIBaseURL() + "/execution/jobs/";
         if (templateType.equalsIgnoreCase(TowerConnector.JOB_TEMPLATE_TYPE)) {
-            returnURL += "jobs";
+            returnURL += "playbook";
         } else {
-            returnURL += "workflows";
+            returnURL += "workflow";
         }
-        returnURL += "/"+ myJobID;
+        returnURL += "/"+ myJobID + "/output";
         return returnURL;
+    }
+
+    public String getUIBaseURL() {
+        if(displayURL != null && displayURL.length() > 0) { return displayURL; }
+        return url;
     }
 
     private String getBasicAuthString() {
