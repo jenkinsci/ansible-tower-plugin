@@ -63,6 +63,8 @@ public class TowerConnector implements Serializable {
     private TowerLogger logger = new TowerLogger();
     private HashMap<Long, Long> logIdForWorkflows = new HashMap<Long, Long>();
     private HashMap<Long, Long> logIdForJobs = new HashMap<Long, Long>();
+    private HashMap<String, Boolean> aapControllerUIByJob = new HashMap<String, Boolean>();
+    private Boolean aapControllerUIAvailable = null;
 
     private boolean removeColor = true;
     private boolean getFullLogs = false;
@@ -649,7 +651,9 @@ public class TowerConnector implements Serializable {
             }
 
             if (responseObject.containsKey("id")) {
-                return responseObject.getLong("id");
+                long jobID = responseObject.getLong("id");
+                cacheJobUIURLMode(jobID, templateType, responseObject);
+                return jobID;
             }
             logger.logMessage(json);
             throw new AnsibleTowerException("Did not get an ID from the request. Template response can be found in the jenkins.log");
@@ -705,6 +709,7 @@ public class TowerConnector implements Serializable {
             } catch(IOException ioe) {
                 throw new AnsibleTowerException("Unable to read response and convert it into json: "+ ioe.getMessage());
             }
+            cacheJobUIURLMode(jobID, templateType, responseObject);
 
             if (responseObject.containsKey("finished")) {
                 String finished = responseObject.getString("finished");
@@ -872,6 +877,7 @@ public class TowerConnector implements Serializable {
                     }
 
                     if(eventId > this.logIdForWorkflows.get(jobID)) { this.logIdForWorkflows.put(jobID, eventId); }
+                    cacheJobUIURLMode(job.getLong("id"), JOB_TEMPLATE_TYPE, job);
                     events.addAll(logLine(job.getString("name") +" => "+ job.getString("status") +" "+ this.getJobURL(job.getLong("id"), JOB_TEMPLATE_TYPE)));
 
                     if(importWorkflowChildLogs) {
@@ -1042,6 +1048,7 @@ public class TowerConnector implements Serializable {
             } catch(IOException ioe) {
                 throw new AnsibleTowerException("Unable to read response and convert it into json: "+ ioe.getMessage());
             }
+            cacheJobUIURLMode(jobID, templateType, responseObject);
 
             if (responseObject.containsKey("failed")) {
                 return responseObject.getBoolean("failed");
@@ -1054,19 +1061,107 @@ public class TowerConnector implements Serializable {
     }
 
     public String getJobURL(long myJobID, String templateType) {
-        String returnURL = getUIBaseURL() + "/execution/jobs/";
-        if (templateType.equalsIgnoreCase(TowerConnector.JOB_TEMPLATE_TYPE)) {
-            returnURL += "playbook";
-        } else {
-            returnURL += "workflow";
+        if(!useAAPControllerUI(myJobID, templateType)) {
+            String returnURL = getUIBaseURL() + "/#/";
+            if (templateType.equalsIgnoreCase(TowerConnector.JOB_TEMPLATE_TYPE)) {
+                returnURL += "jobs";
+            } else {
+                returnURL += "workflows";
+            }
+            return returnURL + "/" + myJobID;
         }
-        returnURL += "/"+ myJobID + "/output";
-        return returnURL;
+
+        return getAAPControllerJobURL(myJobID, templateType);
     }
 
     public String getUIBaseURL() {
         if(displayURL != null && displayURL.length() > 0) { return displayURL; }
         return url;
+    }
+
+    public boolean hasDisplayURL() {
+        return displayURL != null && displayURL.length() > 0;
+    }
+
+    public boolean isAAPControllerUIURL(long jobID, String templateType) {
+        return useAAPControllerUI(jobID, templateType);
+    }
+
+    public void detectJobUIURLMode(long jobID, String templateType) throws AnsibleTowerException {
+        checkTemplateType(templateType);
+
+        String apiEndpoint = "/jobs/"+ jobID +"/";
+        if(templateType.equalsIgnoreCase(WORKFLOW_TEMPLATE_TYPE)) { apiEndpoint = "/workflow_jobs/"+ jobID +"/"; }
+        HttpResponse response = makeRequest(GET, apiEndpoint);
+
+        if(response.getStatusLine().getStatusCode() != 200) {
+            throw new AnsibleTowerException("Unexpected error code returned while detecting job UI URL mode (" + response.getStatusLine().getStatusCode() + ")");
+        }
+
+        try {
+            JSONObject responseObject = JSONObject.fromObject(EntityUtils.toString(response.getEntity()));
+            cacheJobUIURLMode(jobID, templateType, responseObject);
+        } catch(IOException ioe) {
+            throw new AnsibleTowerException("Unable to read job response while detecting UI URL mode: "+ ioe.getMessage());
+        }
+    }
+
+    public String getProjectSyncURL(long syncID, String apiURL) {
+        if(!isAAPControllerProjectSyncUIURL(apiURL)) {
+            return getUIBaseURL() + "/#/jobs/project/" + syncID;
+        }
+        return getUIBaseURL() +"/execution/jobs/project_update/"+ syncID + "/output";
+    }
+
+    public boolean isAAPControllerProjectSyncUIURL(String apiURL) {
+        return isAAPControllerAPIURL(apiURL) || isAAPControllerUIAvailable();
+    }
+
+    void cacheJobUIURLMode(long jobID, String templateType, String apiURL) {
+        aapControllerUIByJob.put(getJobUIURLModeCacheKey(jobID, templateType), isAAPControllerAPIURL(apiURL));
+    }
+
+    boolean isAAPControllerAPIURL(String apiURL) {
+        if(apiURL == null) { return false; }
+        return apiURL.contains("/api/controller/") || apiURL.contains("/api/gateway/") || apiURL.contains("/controller/");
+    }
+
+    private void cacheJobUIURLMode(long jobID, String templateType, JSONObject jobData) {
+        if(jobData != null && jobData.containsKey("url")) {
+            cacheJobUIURLMode(jobID, templateType, jobData.getString("url"));
+        }
+    }
+
+    private boolean useAAPControllerUI(long jobID, String templateType) {
+        String key = getJobUIURLModeCacheKey(jobID, templateType);
+        if(aapControllerUIByJob.containsKey(key) && aapControllerUIByJob.get(key)) {
+            return true;
+        }
+        return isAAPControllerUIAvailable();
+    }
+
+    private boolean isAAPControllerUIAvailable() {
+        if(aapControllerUIAvailable == null) {
+            try {
+                aapControllerUIAvailable = towerSupports("/api/controller/v2/ping/");
+            } catch(AnsibleTowerException ate) {
+                logger.logMessage("Unable to detect AAP Controller API support: " + ate.getMessage());
+                aapControllerUIAvailable = false;
+            }
+        }
+        return aapControllerUIAvailable;
+    }
+
+    private String getAAPControllerJobURL(long myJobID, String templateType) {
+        String jobPath = "workflow";
+        if (templateType.equalsIgnoreCase(TowerConnector.JOB_TEMPLATE_TYPE)) {
+            jobPath = "playbook";
+        }
+        return getUIBaseURL() + "/execution/jobs/" + jobPath + "/" + myJobID + "/output";
+    }
+
+    private String getJobUIURLModeCacheKey(long jobID, String templateType) {
+        return templateType + ":" + jobID;
     }
 
     private String getBasicAuthString() {

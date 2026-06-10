@@ -114,7 +114,11 @@ public class TowerProjectSync implements Serializable {
     }
 
     public String getURL() {
-        return connection.getUIBaseURL() +"/execution/jobs/project_update/"+ syncData.getLong("id") + "/output";
+        return connection.getProjectSyncURL(syncData.getLong("id"), syncData.getString("url"));
+    }
+
+    public boolean usesAAPControllerUI() {
+        return connection.isAAPControllerProjectSyncUIURL(syncData.getString("url"));
     }
 
     public long getID() {

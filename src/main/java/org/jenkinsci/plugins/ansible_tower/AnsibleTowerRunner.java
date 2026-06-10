@@ -212,8 +212,18 @@ public class AnsibleTowerRunner {
             myTowerConnection.releaseToken();
             return false;
         }
+        try {
+            myTowerConnection.detectJobUIURLMode(this.myJob.getJobID(), templateType);
+        } catch (AnsibleTowerException e) {
+            if (verbose) {
+                logger.println("[WARNING]: Unable to detect Ansible Tower UI URL mode, using legacy URL format: " + e.getMessage());
+            }
+        }
 
         String jobURL = myTowerConnection.getJobURL(this.myJob.getJobID(), templateType);
+        if (myTowerConnection.isAAPControllerUIURL(this.myJob.getJobID(), templateType) && !myTowerConnection.hasDisplayURL()) {
+            logger.println("[WARNING]: AAP Controller UI was detected but Display URL is not configured; using Tower URL as the UI base");
+        }
         logger.println("Template Job URL: " + jobURL);
 
         towerResults.put("JOB_ID", Long.toString(this.myJob.getJobID()));
@@ -446,6 +456,9 @@ public class AnsibleTowerRunner {
         }
 
         String syncURL = projectSync.getURL();
+        if (projectSync.usesAAPControllerUI() && !myTowerConnection.hasDisplayURL()) {
+            logger.println("[WARNING]: AAP Controller UI was detected but Display URL is not configured; using Tower URL as the UI base");
+        }
         logger.println("Project Sync URL: " + syncURL);
         towerResults.put("SYNC_ID", projectSync.getID());
         towerResults.put("SYNC_URL", syncURL);
