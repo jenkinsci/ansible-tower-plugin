@@ -198,6 +198,39 @@ public class TowerConnector implements Serializable {
         return normalizeBaseURL(url);
     }
 
+    static boolean isAAPControllerMode(String apiBasePath) {
+        return API_BASE_PATH_AAP_CONTROLLER.equals(normalizeApiBasePath(apiBasePath));
+    }
+
+    static String buildJobURL(String uiBaseURL, String apiBasePath, long jobID, String templateType) {
+        uiBaseURL = normalizeBaseURL(uiBaseURL);
+        if(isAAPControllerMode(apiBasePath)) {
+            String jobPath = JOB_TEMPLATE_TYPE;
+            if(WORKFLOW_TEMPLATE_TYPE.equalsIgnoreCase(templateType)) {
+                jobPath = "workflow";
+            } else {
+                jobPath = "playbook";
+            }
+            return uiBaseURL + "/execution/jobs/" + jobPath + "/" + jobID + "/output";
+        }
+
+        String returnURL = uiBaseURL +"/#/";
+        if (JOB_TEMPLATE_TYPE.equalsIgnoreCase(templateType)) {
+            returnURL += "jobs";
+        } else {
+            returnURL += "workflows";
+        }
+        return returnURL + "/" + jobID;
+    }
+
+    static String buildProjectSyncURL(String uiBaseURL, String apiBasePath, long syncID) {
+        uiBaseURL = normalizeBaseURL(uiBaseURL);
+        if(isAAPControllerMode(apiBasePath)) {
+            return uiBaseURL + "/execution/jobs/project_update/" + syncID + "/output";
+        }
+        return uiBaseURL + "/#/jobs/project/" + syncID;
+    }
+
     private HttpResponse makeRequest(int requestType, String endpoint) throws AnsibleTowerException {
         return makeRequest(requestType, endpoint, null, false);
     }
@@ -1097,14 +1130,11 @@ public class TowerConnector implements Serializable {
     }
 
     public String getJobURL(long myJobID, String templateType) {
-        String returnURL = getUIBaseURL() +"/#/";
-        if (templateType.equalsIgnoreCase(TowerConnector.JOB_TEMPLATE_TYPE)) {
-            returnURL += "jobs";
-        } else {
-            returnURL += "workflows";
-        }
-        returnURL += "/"+ myJobID;
-        return returnURL;
+        return buildJobURL(getUIBaseURL(), this.apiBasePath, myJobID, templateType);
+    }
+
+    public String getProjectSyncURL(long syncID) {
+        return buildProjectSyncURL(getUIBaseURL(), this.apiBasePath, syncID);
     }
 
     private String getBasicAuthString() {

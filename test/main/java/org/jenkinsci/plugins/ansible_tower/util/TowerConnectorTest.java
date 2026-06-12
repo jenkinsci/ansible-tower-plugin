@@ -75,4 +75,46 @@ public class TowerConnectorTest {
                 TowerConnector.selectUIBaseURL("https://gateway.example.com", "https://controller.example.com/"),
                 CoreMatchers.is("https://controller.example.com"));
     }
+
+    @Test
+    public void buildJobURL_keepsLegacyJobURL() {
+        Assert.assertThat(
+                TowerConnector.buildJobURL("https://tower.example.com", TowerConnector.API_BASE_PATH_LEGACY, 123, TowerConnector.JOB_TEMPLATE_TYPE),
+                CoreMatchers.is("https://tower.example.com/#/jobs/123"));
+    }
+
+    @Test
+    public void buildJobURL_keepsLegacyWorkflowURL() {
+        Assert.assertThat(
+                TowerConnector.buildJobURL("https://tower.example.com", TowerConnector.API_BASE_PATH_LEGACY, 456, TowerConnector.WORKFLOW_TEMPLATE_TYPE),
+                CoreMatchers.is("https://tower.example.com/#/workflows/456"));
+    }
+
+    @Test
+    public void buildJobURL_usesAAPControllerPlaybookOutputURL() {
+        Assert.assertThat(
+                TowerConnector.buildJobURL("https://controller.example.com", TowerConnector.API_BASE_PATH_AAP_CONTROLLER, 123, TowerConnector.JOB_TEMPLATE_TYPE),
+                CoreMatchers.is("https://controller.example.com/execution/jobs/playbook/123/output"));
+    }
+
+    @Test
+    public void buildJobURL_usesAAPControllerWorkflowOutputURL() {
+        Assert.assertThat(
+                TowerConnector.buildJobURL("https://controller.example.com", TowerConnector.API_BASE_PATH_AAP_CONTROLLER, 456, TowerConnector.WORKFLOW_TEMPLATE_TYPE),
+                CoreMatchers.is("https://controller.example.com/execution/jobs/workflow/456/output"));
+    }
+
+    @Test
+    public void buildProjectSyncURL_keepsLegacyProjectSyncURL() {
+        Assert.assertThat(
+                TowerConnector.buildProjectSyncURL("https://tower.example.com", TowerConnector.API_BASE_PATH_LEGACY, 789),
+                CoreMatchers.is("https://tower.example.com/#/jobs/project/789"));
+    }
+
+    @Test
+    public void buildProjectSyncURL_usesAAPControllerProjectUpdateOutputURL() {
+        Assert.assertThat(
+                TowerConnector.buildProjectSyncURL("https://controller.example.com", TowerConnector.API_BASE_PATH_AAP_CONTROLLER, 789),
+                CoreMatchers.is("https://controller.example.com/execution/jobs/project_update/789/output"));
+    }
 }
