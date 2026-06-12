@@ -26,8 +26,9 @@ The fields are as follows:
 | Force Trust Cert | If your Ansible Tower instance is using an https cert that Jenkins does not trust, and you want the plugin to trust the cert anyway, you can click this box.<br/><br/>You should really understand the implications if you are going to use this option. Its meant for testing purposes only. |
 | Name | The name that this Ansible Tower installation will be referenced as. |
 | URL | The base URL used for API calls to the Ansible Tower, AWX, or AAP controller.|
-| Display URL | Optional base URL used when Jenkins prints links to the controller UI. Leave blank to use URL. Set this when an AAP gateway/API URL and controller UI URL are different.|
 | API Base Path | API path used for controller API calls. Use `/api/v2` for Tower/AWX legacy installations. Use `/api/controller/v2` for AAP 2.5+ controller deployments.|
+
+Display URL is optional and is used only when Jenkins prints links to the controller UI. Leave it blank to use URL. Set it when an AAP gateway/API URL and controller UI URL are different.
 
 Once the settings are completed, you can test the connection between Jenkins and Ansible Tower by clicking on the Test Connection button.
 
