@@ -55,6 +55,10 @@ public class TowerInstallation extends AbstractDescribableImpl<TowerInstallation
         this.enableDebugging = enableDebugging;
     }
 
+    public TowerInstallation(String towerDisplayName, String towerURL, String towerCredentialsId, boolean towerTrustCert, boolean enableDebugging) {
+        this(towerDisplayName, towerURL, null, TowerConnector.API_BASE_PATH_LEGACY, towerCredentialsId, towerTrustCert, enableDebugging);
+    }
+
     public String getTowerDisplayName() {
         return this.towerDisplayName;
     }

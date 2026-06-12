@@ -35,13 +35,13 @@ Once the settings are completed, you can test the connection between Jenkins and
 
 Existing Pipeline steps and Freestyle build steps remain unchanged. Jobs that already use `ansibleTower`, `ansibleTowerProjectSync`, or `ansibleTowerProjectRevision` do not need to be renamed.
 
-For AAP 2.5+ controller deployments, configure the installation with:
+For AAP 2.5+ controller deployments, configure the installation like this:
 
-| Field | Example |
-|-------|---------|
-| URL | `https://aap-gateway.example.com` |
-| Display URL | `https://aap-controller.example.com` |
-| API Base Path | `/api/controller/v2` |
+```text
+URL: https://aap-gateway.example.com
+Display URL: https://aap-controller.example.com
+API Base Path: /api/controller/v2
+```
 
 When API Base Path is set to `/api/controller/v2`, generated job links use AAP Controller execution output URLs such as:
 
