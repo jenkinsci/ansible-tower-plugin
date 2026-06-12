@@ -47,4 +47,18 @@ public class TowerConnectorTest {
                 TowerConnector.buildEndpoint("/api/v2/jobs/", TowerConnector.API_BASE_PATH_AAP_CONTROLLER),
                 CoreMatchers.is("/api/v2/jobs/"));
     }
+
+    @Test
+    public void buildOAuthTokenEndpoint_usesLegacyApiBasePathByDefault() {
+        Assert.assertThat(
+                TowerConnector.buildOAuthTokenEndpoint(null),
+                CoreMatchers.is("/api/v2/tokens/"));
+    }
+
+    @Test
+    public void buildOAuthTokenEndpoint_usesGatewayForAAPControllerApiBasePath() {
+        Assert.assertThat(
+                TowerConnector.buildOAuthTokenEndpoint(TowerConnector.API_BASE_PATH_AAP_CONTROLLER),
+                CoreMatchers.is(TowerConnector.API_GATEWAY_TOKEN_ENDPOINT));
+    }
 }

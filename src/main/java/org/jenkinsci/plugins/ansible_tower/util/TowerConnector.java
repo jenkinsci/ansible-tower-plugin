@@ -49,11 +49,13 @@ public class TowerConnector implements Serializable {
     public static final String WORKFLOW_TEMPLATE_TYPE = "workflow";
     public static final String API_BASE_PATH_LEGACY = "/api/v2";
     public static final String API_BASE_PATH_AAP_CONTROLLER = "/api/controller/v2";
+    public static final String API_GATEWAY_TOKEN_ENDPOINT = "/api/gateway/v1/tokens/";
     private static final String ARTIFACTS = "artifacts";
 
     private String authorizationHeader = null;
     private String oauthToken = null;
     private String oAuthTokenID = null;
+    private String oAuthTokenBaseEndpoint = null;
     private String url = null;
     private String apiBasePath = API_BASE_PATH_LEGACY;
     private String username = null;
@@ -173,6 +175,13 @@ public class TowerConnector implements Serializable {
         if(!endpoint.startsWith("/")) { full_endpoint += "/"; }
         full_endpoint += endpoint;
         return full_endpoint;
+    }
+
+    static String buildOAuthTokenEndpoint(String apiBasePath) {
+        if(API_BASE_PATH_AAP_CONTROLLER.equals(normalizeApiBasePath(apiBasePath))) {
+            return API_GATEWAY_TOKEN_ENDPOINT;
+        }
+        return buildEndpoint("/tokens/", apiBasePath);
     }
 
     private HttpResponse makeRequest(int requestType, String endpoint) throws AnsibleTowerException {
@@ -1089,7 +1098,8 @@ public class TowerConnector implements Serializable {
     }
 
     private String getOAuthToken() throws AnsibleTowerException {
-        String tokenURI = url + this.buildEndpoint("/tokens/");
+        String tokenEndpoint = buildOAuthTokenEndpoint(this.apiBasePath);
+        String tokenURI = url + tokenEndpoint;
         HttpPost oauthTokenRequest = new HttpPost(tokenURI);
         oauthTokenRequest.setHeader(HttpHeaders.AUTHORIZATION, this.getBasicAuthString());
         JSONObject body = new JSONObject();
@@ -1135,6 +1145,7 @@ public class TowerConnector implements Serializable {
 
         if (responseObject.containsKey("id")) {
             this.oAuthTokenID = responseObject.getString("id");
+            this.oAuthTokenBaseEndpoint = tokenEndpoint;
         }
 
         if (responseObject.containsKey("token")) {
@@ -1201,7 +1212,11 @@ public class TowerConnector implements Serializable {
         if(this.oAuthTokenID != null) {
             logger.logMessage("Deleting oAuth token "+ this.oAuthTokenID +" for " + this.username);
             try {
-                String tokenURI = url + this.buildEndpoint("/tokens/" + this.oAuthTokenID + "/");
+                String tokenEndpoint = this.oAuthTokenBaseEndpoint;
+                if(tokenEndpoint == null) {
+                    tokenEndpoint = this.buildEndpoint("/tokens/");
+                }
+                String tokenURI = url + tokenEndpoint + this.oAuthTokenID + "/";
                 HttpDelete tokenRequest = new HttpDelete(tokenURI);
                 tokenRequest.setHeader(HttpHeaders.AUTHORIZATION, this.getBasicAuthString());
 
@@ -1216,6 +1231,7 @@ public class TowerConnector implements Serializable {
                 logger.logMessage("oAuth Token deleted");
 
                 this.oAuthTokenID = null;
+                this.oAuthTokenBaseEndpoint = null;
                 this.authorizationHeader = null;
             } catch(Exception e) {
                 logger.logMessage("Failed to delete token: "+ e.getMessage());
