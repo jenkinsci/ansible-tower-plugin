@@ -37,6 +37,7 @@ public class TowerInstallation extends AbstractDescribableImpl<TowerInstallation
 
     private final String towerDisplayName;
     private final String towerURL;
+    private String towerDisplayURL;
     private String towerApiBasePath;
     private String towerCredentialsId;
     private final boolean towerTrustCert;
@@ -44,10 +45,11 @@ public class TowerInstallation extends AbstractDescribableImpl<TowerInstallation
     private Run run;
 
     @DataBoundConstructor
-    public TowerInstallation(String towerDisplayName, String towerURL, String towerApiBasePath, String towerCredentialsId, boolean towerTrustCert, boolean enableDebugging) {
+    public TowerInstallation(String towerDisplayName, String towerURL, String towerDisplayURL, String towerApiBasePath, String towerCredentialsId, boolean towerTrustCert, boolean enableDebugging) {
         this.towerDisplayName = towerDisplayName;
         this.towerCredentialsId = towerCredentialsId;
         this.towerURL = towerURL;
+        this.towerDisplayURL = TowerConnector.normalizeBaseURL(towerDisplayURL);
         this.towerApiBasePath = TowerConnector.normalizeApiBasePath(towerApiBasePath);
         this.towerTrustCert = towerTrustCert;
         this.enableDebugging = enableDebugging;
@@ -59,6 +61,10 @@ public class TowerInstallation extends AbstractDescribableImpl<TowerInstallation
 
     public String getTowerURL() {
         return this.towerURL;
+    }
+
+    public String getTowerDisplayURL() {
+        return this.towerDisplayURL;
     }
 
     public String getTowerApiBasePath() {
@@ -87,7 +93,7 @@ public class TowerInstallation extends AbstractDescribableImpl<TowerInstallation
 
     public TowerConnector getTowerConnector() {
         return TowerInstallation.getTowerConnectorStatic(this.towerURL, this.towerCredentialsId, this.towerTrustCert,
-                this.enableDebugging, this.run, this.getTowerApiBasePath());
+                this.enableDebugging, this.run, this.getTowerApiBasePath(), this.getTowerDisplayURL());
     }
 
     public static TowerConnector getTowerConnectorStatic(String towerURL, String towerCredentialsId, boolean trustCert,
@@ -97,6 +103,11 @@ public class TowerInstallation extends AbstractDescribableImpl<TowerInstallation
 
     public static TowerConnector getTowerConnectorStatic(String towerURL, String towerCredentialsId, boolean trustCert,
                                                          boolean enableDebugging, Run run, String towerApiBasePath) {
+        return getTowerConnectorStatic(towerURL, towerCredentialsId, trustCert, enableDebugging, run, towerApiBasePath, null);
+    }
+
+    public static TowerConnector getTowerConnectorStatic(String towerURL, String towerCredentialsId, boolean trustCert,
+                                                         boolean enableDebugging, Run run, String towerApiBasePath, String towerDisplayURL) {
         String username = null;
         String password = null;
         String oauth_token = null;
@@ -115,7 +126,7 @@ public class TowerInstallation extends AbstractDescribableImpl<TowerInstallation
                 }
             }
         }
-        TowerConnector testConnector = new TowerConnector(towerURL, username, password, oauth_token, trustCert, enableDebugging, towerApiBasePath);
+        TowerConnector testConnector = new TowerConnector(towerURL, username, password, oauth_token, trustCert, enableDebugging, towerApiBasePath, towerDisplayURL);
         return testConnector;
     }
     
@@ -184,4 +195,3 @@ public class TowerInstallation extends AbstractDescribableImpl<TowerInstallation
         }
     }
 }
-

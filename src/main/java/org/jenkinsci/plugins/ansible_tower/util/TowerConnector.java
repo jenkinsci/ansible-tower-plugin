@@ -57,6 +57,7 @@ public class TowerConnector implements Serializable {
     private String oAuthTokenID = null;
     private String oAuthTokenBaseEndpoint = null;
     private String url = null;
+    private String displayURL = null;
     private String apiBasePath = API_BASE_PATH_LEGACY;
     private String username = null;
     private String password = null;
@@ -78,7 +79,12 @@ public class TowerConnector implements Serializable {
     }
 
     public TowerConnector(String url, String username, String password, String oauthToken, Boolean trustAllCerts, Boolean debug, String apiBasePath) {
+        this(url, username, password, oauthToken, trustAllCerts, debug, apiBasePath, null);
+    }
+
+    public TowerConnector(String url, String username, String password, String oauthToken, Boolean trustAllCerts, Boolean debug, String apiBasePath, String displayURL) {
         this.url = normalizeBaseURL(url);
+        this.displayURL = normalizeBaseURL(displayURL);
         this.apiBasePath = normalizeApiBasePath(apiBasePath);
         this.username = username;
         this.password = password;
@@ -182,6 +188,14 @@ public class TowerConnector implements Serializable {
             return API_GATEWAY_TOKEN_ENDPOINT;
         }
         return buildEndpoint("/tokens/", apiBasePath);
+    }
+
+    static String selectUIBaseURL(String url, String displayURL) {
+        displayURL = normalizeBaseURL(displayURL);
+        if(displayURL != null && !displayURL.isEmpty()) {
+            return displayURL;
+        }
+        return normalizeBaseURL(url);
     }
 
     private HttpResponse makeRequest(int requestType, String endpoint) throws AnsibleTowerException {
@@ -384,6 +398,8 @@ public class TowerConnector implements Serializable {
     }
 
     public String getURL() { return url; }
+    public String getUIBaseURL() { return selectUIBaseURL(this.url, this.displayURL); }
+    public boolean hasDisplayURL() { return this.displayURL != null && !this.displayURL.isEmpty(); }
     public void getVersion() throws AnsibleTowerException {
         // The version is housed on the poing page which is openly accessable
         HttpResponse response = makeRequest(GET, "ping/", null, true);
@@ -1081,7 +1097,7 @@ public class TowerConnector implements Serializable {
     }
 
     public String getJobURL(long myJobID, String templateType) {
-        String returnURL = url +"/#/";
+        String returnURL = getUIBaseURL() +"/#/";
         if (templateType.equalsIgnoreCase(TowerConnector.JOB_TEMPLATE_TYPE)) {
             returnURL += "jobs";
         } else {

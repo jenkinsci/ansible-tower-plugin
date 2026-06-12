@@ -61,4 +61,18 @@ public class TowerConnectorTest {
                 TowerConnector.buildOAuthTokenEndpoint(TowerConnector.API_BASE_PATH_AAP_CONTROLLER),
                 CoreMatchers.is(TowerConnector.API_GATEWAY_TOKEN_ENDPOINT));
     }
+
+    @Test
+    public void selectUIBaseURL_usesApiURLWhenDisplayURLIsBlank() {
+        Assert.assertThat(
+                TowerConnector.selectUIBaseURL("https://gateway.example.com/", ""),
+                CoreMatchers.is("https://gateway.example.com"));
+    }
+
+    @Test
+    public void selectUIBaseURL_prefersDisplayURL() {
+        Assert.assertThat(
+                TowerConnector.selectUIBaseURL("https://gateway.example.com", "https://controller.example.com/"),
+                CoreMatchers.is("https://controller.example.com"));
+    }
 }
