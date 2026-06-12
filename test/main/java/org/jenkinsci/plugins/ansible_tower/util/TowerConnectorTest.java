@@ -63,6 +63,20 @@ public class TowerConnectorTest {
     }
 
     @Test
+    public void shouldProbeOAuthSupport_keepsLegacyProbe() {
+        Assert.assertThat(
+                TowerConnector.shouldProbeOAuthSupport(TowerConnector.API_BASE_PATH_LEGACY),
+                CoreMatchers.is(true));
+    }
+
+    @Test
+    public void shouldProbeOAuthSupport_skipsProbeForAAPControllerMode() {
+        Assert.assertThat(
+                TowerConnector.shouldProbeOAuthSupport(TowerConnector.API_BASE_PATH_AAP_CONTROLLER),
+                CoreMatchers.is(false));
+    }
+
+    @Test
     public void selectUIBaseURL_usesApiURLWhenDisplayURLIsBlank() {
         Assert.assertThat(
                 TowerConnector.selectUIBaseURL("https://gateway.example.com/", ""),

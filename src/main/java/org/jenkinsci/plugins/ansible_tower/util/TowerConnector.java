@@ -202,6 +202,10 @@ public class TowerConnector implements Serializable {
         return API_BASE_PATH_AAP_CONTROLLER.equals(normalizeApiBasePath(apiBasePath));
     }
 
+    static boolean shouldProbeOAuthSupport(String apiBasePath) {
+        return !isAAPControllerMode(apiBasePath);
+    }
+
     static String buildJobURL(String uiBaseURL, String apiBasePath, long jobID, String templateType) {
         uiBaseURL = normalizeBaseURL(uiBaseURL);
         if(isAAPControllerMode(apiBasePath)) {
@@ -287,8 +291,8 @@ public class TowerConnector implements Serializable {
                 } else if(this.username != null && this.password != null) {
                     // Second, if we have a username and a password we can try to go get a token
 
-                    // For trying to get a token, we will first attempt to self create an oAuthToken if Tower supports it
-                    if (this.towerSupports("/api/o/")) {
+                    // AAP controller mode uses the gateway token endpoint directly. Legacy Tower/AWX still probes /api/o/.
+                    if (!shouldProbeOAuthSupport(this.apiBasePath) || this.towerSupports("/api/o/")) {
                         logger.logMessage("Getting an oAuth token for "+ this.username);
                         try {
                             this.authorizationHeader = "Bearer " + this.getOAuthToken();
