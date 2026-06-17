@@ -192,6 +192,42 @@ public class TowerConnector implements Serializable {
         return !isAAPControllerMode(apiBasePath);
     }
 
+    static String buildJobURL(String uiBaseURL, String apiBasePath, long jobID, String jobType) {
+        uiBaseURL = normalizeBaseURL(uiBaseURL);
+        jobType = normalizeJobType(jobType);
+
+        if(isAAPControllerMode(apiBasePath)) {
+            if("workflow_job".equals(jobType)) {
+                return uiBaseURL + "/execution/jobs/workflow/" + jobID + "/output";
+            } else if("project_update".equals(jobType)) {
+                return uiBaseURL + "/execution/jobs/project_update/" + jobID + "/output";
+            } else if("inventory_update".equals(jobType)) {
+                return uiBaseURL + "/execution/jobs/inventory_update/" + jobID + "/output";
+            }
+            return uiBaseURL + "/execution/jobs/playbook/" + jobID + "/output";
+        }
+
+        if("workflow_job".equals(jobType)) {
+            return uiBaseURL + "/#/jobs/workflow/" + jobID;
+        } else if("project_update".equals(jobType)) {
+            return uiBaseURL + "/#/jobs/project/" + jobID;
+        } else if("inventory_update".equals(jobType)) {
+            return uiBaseURL + "/#/jobs/inventory/" + jobID;
+        }
+        return uiBaseURL + "/#/jobs/" + jobID;
+    }
+
+    private static String normalizeJobType(String jobType) {
+        if(jobType == null || jobType.trim().isEmpty()) {
+            return JOB_TEMPLATE_TYPE;
+        }
+        jobType = jobType.trim().toLowerCase();
+        if(WORKFLOW_TEMPLATE_TYPE.equals(jobType)) {
+            return "workflow_job";
+        }
+        return jobType;
+    }
+
     private HttpResponse makeRequest(int requestType, String endpoint) throws AnsibleTowerException {
         return makeRequest(requestType, endpoint, null, false);
     }
@@ -907,7 +943,7 @@ public class TowerConnector implements Serializable {
                     }
 
                     if(eventId > this.logIdForWorkflows.get(jobID)) { this.logIdForWorkflows.put(jobID, eventId); }
-                    events.addAll(logLine(job.getString("name") +" => "+ job.getString("status") +" "+ this.getJobURL(job.getLong("id"), JOB_TEMPLATE_TYPE)));
+                    events.addAll(logLine(job.getString("name") +" => "+ job.getString("status") +" "+ this.getJobURL(job.getLong("id"), templateType.getString(UNIFIED_JOB_TYPE))));
 
                     if(importWorkflowChildLogs) {
                         if(templateType.getString(UNIFIED_JOB_TYPE).equalsIgnoreCase("job")) {
@@ -1089,14 +1125,11 @@ public class TowerConnector implements Serializable {
     }
 
     public String getJobURL(long myJobID, String templateType) {
-        String returnURL = url +"/#/";
-        if (templateType.equalsIgnoreCase(TowerConnector.JOB_TEMPLATE_TYPE)) {
-            returnURL += "jobs";
-        } else {
-            returnURL += "workflows";
-        }
-        returnURL += "/"+ myJobID;
-        return returnURL;
+        return buildJobURL(this.url, this.apiBasePath, myJobID, templateType);
+    }
+
+    public String getProjectSyncURL(long syncID) {
+        return buildJobURL(this.url, this.apiBasePath, syncID, "project_update");
     }
 
     private String getBasicAuthString() {

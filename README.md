@@ -42,6 +42,7 @@ API Base Path: /api/controller/v2
 ```
 
 In this mode, controller API calls use `/api/controller/v2/...`, while Jenkins-created OAuth tokens use the gateway token endpoint `/api/gateway/v1/tokens/`.
+Generated job links are selected from the configured API Base Path and the job type returned by the controller API. Legacy Tower/AWX workflow jobs use `/#/jobs/workflow/<id>`, while AAP controller workflow jobs use `/execution/jobs/workflow/<id>/output`.
 
 ## Basic Authentication
 
