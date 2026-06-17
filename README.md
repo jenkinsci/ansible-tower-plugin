@@ -25,9 +25,24 @@ The fields are as follows:
 | Enable Debugging | This will allow the plugin to write detailed messages into the jenkins.log for debugging purposes. It will show show requests to the server and payloads. This can contain a lot of data. All messages are prefixed with \[Ansible-Tower].<br/><br/>For Example:<br/><br/>[Ansible-Tower] building request to https://192.168.56.101/api/v1/workflow_jobs/200/workflow_nodes/<br/>[Ansible-Tower] Adding auth for admin<br/>[Ansible-Tower] Forcing cert trust</br> [Ansible-Tower] {"count":4,"next":null ...</br>|
 | Force Trust Cert | If your Ansible Tower instance is using an https cert that Jenkins does not trust, and you want the plugin to trust the cert anyway, you can click this box.<br/><br/>You should really understand the implications if you are going to use this option. Its meant for testing purposes only. |
 | Name | The name that this Ansible Tower installation will be referenced as. |
-| URL | The base URL of the Ansible Tower server.|
+| URL | The base URL used for API calls to the Ansible Tower, AWX, or AAP gateway/controller.|
+| API Base Path | API path used for controller API calls. Use `/api/v2` for Tower/AWX legacy installations. Use `/api/controller/v2` for AAP 2.5+ controller deployments.|
 
 Once the settings are completed, you can test the connection between Jenkins and Ansible Tower by clicking on the Test Connection button.
+
+## AAP 2.5+ Compatibility
+
+Existing Pipeline steps and Freestyle build steps remain unchanged. Jobs that already use `ansibleTower`, `ansibleTowerProjectSync`, or `ansibleTowerProjectRevision` do not need to be renamed.
+
+For AAP 2.5+ controller deployments, configure the installation like this:
+
+```text
+URL: https://aap-gateway.example.com
+API Base Path: /api/controller/v2
+```
+
+In this mode, controller API calls use `/api/controller/v2/...`, while Jenkins-created OAuth tokens use the gateway token endpoint `/api/gateway/v1/tokens/`.
+Generated job links are selected from the configured API Base Path and the job type returned by the controller API. Legacy Tower/AWX workflow jobs use `/#/jobs/workflow/<id>`, while AAP controller workflow jobs use `/execution/jobs/workflow/<id>/output`.
 
 ## Basic Authentication
 
