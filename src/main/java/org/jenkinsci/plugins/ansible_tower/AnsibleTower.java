@@ -142,9 +142,23 @@ public class AnsibleTower extends Builder {
 	@DataBoundSetter
 	public void setVerbose(Boolean verbose) { this.verbose = verbose; }
 	@DataBoundSetter
-	public void setImportTowerLogs(Boolean importTowerLogs) { this.importTowerLogs = importTowerLogs.toString(); }
-	@DataBoundSetter
-	public void setImportTowerLogs(String importTowerLogs) { this.importTowerLogs = importTowerLogs; }
+	public void setImportTowerLogs(Object importTowerLogs) { 
+		if (importTowerLogs == null) {
+			this.importTowerLogs = "false"; // Default value
+		} else if (importTowerLogs instanceof Boolean) {
+			this.importTowerLogs = importTowerLogs.toString();
+		} else if (importTowerLogs instanceof String) {
+			// Validate the string value
+			String value = (String) importTowerLogs;
+			if (value.matches("false|true|vars|full")) {
+				this.importTowerLogs = value;
+			} else {
+				throw new IllegalArgumentException("importTowerLogs must be one of: false, true, vars, full");
+			}
+		} else {
+			throw new IllegalArgumentException("importTowerLogs must be a Boolean or String");
+		}
+	}
 	@DataBoundSetter
 	public void setRemoveColor(Boolean removeColor) { this.removeColor = removeColor; }
 	@DataBoundSetter
