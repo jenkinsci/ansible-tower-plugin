@@ -10,7 +10,7 @@ import hudson.util.XStream2;
 import jenkins.model.GlobalConfiguration;
 import jenkins.model.Jenkins;
 import net.sf.json.JSONObject;
-import org.kohsuke.stapler.StaplerRequest;
+import org.kohsuke.stapler.StaplerRequest2;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -39,7 +39,7 @@ public class AnsibleTowerGlobalConfig extends GlobalConfiguration {
     }
 
     @Override
-    public boolean configure(StaplerRequest req, JSONObject json)
+    public boolean configure(StaplerRequest2 req, JSONObject json)
             throws FormException
     {
         req.bindJSON(this, json);
