@@ -10,7 +10,7 @@
 
     <groupId>org.jenkins-ci.plugins</groupId>
     <artifactId>ansible-tower</artifactId>
-    <version>0.17.1-SNAPSHOT</version>
+    <version>0.18.1</version>
     <packaging>hpi</packaging>
     <name>Ansible Tower Plugin</name>
     <description>
@@ -36,7 +36,7 @@
         <connection>scm:git:ssh://github.com/jenkinsci/ansible-tower-plugin.git</connection>
         <developerConnection>scm:git:ssh://git@github.com/jenkinsci/ansible-tower-plugin.git</developerConnection>
         <url>https://github.com/jenkinsci/ansible-tower-plugin</url>
-        <tag>ansible-tower-0.17.0</tag>
+        <tag>ansible-tower-0.18.1</tag>
     </scm>
 
     <properties>
