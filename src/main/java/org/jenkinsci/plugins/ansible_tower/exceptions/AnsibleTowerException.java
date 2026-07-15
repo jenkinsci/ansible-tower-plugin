@@ -8,4 +8,8 @@ public class AnsibleTowerException extends Exception {
     public AnsibleTowerException(String message) {
         super(message);
     }
+
+    public AnsibleTowerException(String message, Throwable cause) {
+        super(message, cause);
+    }
 }

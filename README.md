@@ -153,6 +153,7 @@ release: "${BUILD_TAG}"
 
 echo "AAP job ${result.JOB_ID}: ${result.JOB_URL}"
 echo "Result: ${result.JOB_RESULT}"
+echo "Log import: ${result.LOG_IMPORT_RESULT}"
 ```
 
 ### Parameters
@@ -264,6 +265,7 @@ An asynchronous `ansibleTower` result contains:
 
 - `JOB_ID`
 - `JOB_URL`
+- `LOG_IMPORT_RESULT` with value `DEFERRED`
 - `job`, a `TowerJob` handle
 
 ```groovy
@@ -310,7 +312,12 @@ Synchronous job results are returned as a `Properties`-like object containing:
 | `JOB_ID` | Always after launch | Controller job ID. |
 | `JOB_URL` | Always after launch | Link to controller job output. |
 | `JOB_RESULT` | Synchronous execution | `SUCCESS` or `FAILED`. |
+| `LOG_IMPORT_RESULT` | Always after launch | `SKIPPED`, `DEFERRED`, `SUCCESS`, or `PARTIAL`. |
 | Exported keys | After export processing | Values produced through `JENKINS_EXPORT`. |
+
+`JOB_RESULT` reflects only the final AAP job result. Event import is best-effort: if AAP
+finishes successfully while its event or workflow-node endpoints remain unavailable,
+the step returns `JOB_RESULT=SUCCESS` and `LOG_IMPORT_RESULT=PARTIAL`.
 
 Project sync results similarly contain `SYNC_ID`, `SYNC_URL`, and, for synchronous execution, `SYNC_RESULT`.
 
@@ -393,7 +400,16 @@ sudo journalctl -u jenkins --no-pager \
   | grep -E '\[Ansible-Tower\].*(502|503|504|attempt=|exhausted retries)'
 ```
 
-Job status and workflow event polling retry HTTP 502, 503, and 504 responses up to five times with a ten-second delay. Exhausted retries are logged at `SEVERE`.
+Synchronous jobs poll status every five seconds and events every ten seconds. Status
+HTTP 502, 503, and 504 responses back off for 5, 10, 20, 30, and 30 seconds before
+the status path fails. Event failures use an independent 10, 20, then 30-second
+backoff and never delay status polling. After completion, event import is attempted
+immediately and, for transient failures, again after two and five seconds.
+
+All controller HTTP clients use a 10-second connect timeout, a 10-second connection
+pool timeout, and a 30-second read timeout. Transport timeouts, refused/reset
+connections, and empty HTTP responses are treated as transient; TLS, URL, and
+configuration errors are not.
 
 ### Common checks
 
