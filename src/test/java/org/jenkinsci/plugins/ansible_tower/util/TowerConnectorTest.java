@@ -1,10 +1,24 @@
 package org.jenkinsci.plugins.ansible_tower.util;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import net.sf.json.JSONObject;
+import org.apache.http.util.EntityUtils;
 import org.hamcrest.CoreMatchers;
 import org.junit.Assert;
 import org.junit.Test;
 
 public class TowerConnectorTest {
+
+    @Test
+    public void createJsonEntity_encodesNonAsciiContentAsUtf8() throws IOException {
+        JSONObject body = new JSONObject();
+        body.put("message", "Tiếng Việt");
+
+        byte[] content = EntityUtils.toByteArray(TowerConnector.createJsonEntity(body));
+
+        Assert.assertThat(content, CoreMatchers.is(body.toString().getBytes(StandardCharsets.UTF_8)));
+    }
 
     @Test
     public void normalizeBaseURL_removesTrailingSlash() {
