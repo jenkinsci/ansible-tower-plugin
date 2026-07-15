@@ -161,4 +161,27 @@ class TowerConnectorTest {
         MatcherAssert.assertThat(TowerConnector.isTransientGatewayStatus(500), CoreMatchers.is(false));
         MatcherAssert.assertThat(TowerConnector.isTransientGatewayStatus(200), CoreMatchers.is(false));
     }
+
+    @Test
+    public void buildRetryLogMessage_containsOperationalMetadataWithoutPayload() {
+        String message = TowerConnector.buildRetryLogMessage(
+                "workflow_events_poll", 720828L, TowerConnector.WORKFLOW_TEMPLATE_TYPE,
+                "/api/controller/v2/workflow_jobs/720828/workflow_nodes/", 502, 1, 5, 10000L);
+
+        MatcherAssert.assertThat(message, CoreMatchers.is(
+                "workflow_events_poll failed: jobId=720828, templateType=workflow, "
+                + "endpoint=/api/controller/v2/workflow_jobs/720828/workflow_nodes/, "
+                + "httpStatus=502, attempt=1/5, retryDelayMs=10000"));
+    }
+
+    @Test
+    public void buildRetryExhaustedLogMessage_containsFinalAttemptMetadata() {
+        String message = TowerConnector.buildRetryExhaustedLogMessage(
+                "job_status_poll", 720828L, TowerConnector.JOB_TEMPLATE_TYPE,
+                "/api/controller/v2/jobs/720828/", 504, 6);
+
+        MatcherAssert.assertThat(message, CoreMatchers.is(
+                "job_status_poll exhausted retries: jobId=720828, templateType=job, "
+                + "endpoint=/api/controller/v2/jobs/720828/, httpStatus=504, attempts=6"));
+    }
 }

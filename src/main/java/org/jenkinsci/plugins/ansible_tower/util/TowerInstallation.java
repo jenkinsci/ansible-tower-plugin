@@ -149,7 +149,8 @@ public class TowerInstallation extends AbstractDescribableImpl<TowerInstallation
         ) {
             // Also, validate that we are an Administrator
             Jenkins.getInstance().checkPermission(Jenkins.ADMINISTER);
-            TowerLogger.writeMessage("Starting to test connection with (" + towerURL + ") and (" + towerCredentialsId + ") and (" + towerTrustCert + ") with debugging (" + enableDebugging + ")");
+            TowerLogger.writeMessage("Testing Tower connection: url=" + towerURL
+                + ", trustCertificate=" + towerTrustCert + ", debugging=" + enableDebugging);
             TowerConnector testConnector = TowerInstallation.getTowerConnectorStatic(towerURL, towerCredentialsId, towerTrustCert, enableDebugging, null, towerApiBasePath);
             try {
                 testConnector.testConnection();

@@ -6,7 +6,6 @@ package org.jenkinsci.plugins.ansible_tower.util;
 
 import com.google.common.net.HttpHeaders;
 import net.sf.json.JSONArray;
-import org.apache.http.Header;
 import org.apache.http.client.methods.*;
 import org.jenkinsci.plugins.ansible_tower.exceptions.AnsibleTowerDoesNotSupportAuthToken;
 import org.jenkinsci.plugins.ansible_tower.exceptions.AnsibleTowerRefusesToGiveToken;
@@ -90,11 +89,11 @@ public class TowerConnector implements Serializable {
         this.setDebug(debug);
         try {
             this.getVersion();
-            logger.logMessage("Connecting to Tower version: "+ this.towerVersion.getVersion());
+            logger.info("Connected to Tower: version=" + this.towerVersion.getVersion());
         } catch(AnsibleTowerException ate) {
-            logger.logMessage("Failed to get connection to get version; auth errors may ensue "+ ate);
+            logger.warning("Unable to determine Tower version: " + ate.getMessage());
         }
-        logger.logMessage("Created a connector with "+ username +"@"+ url);
+        logger.debug("Created Tower connector: url=" + url);
     }
 
     public void setTrustAllCerts(boolean trustAllCerts) {
@@ -141,7 +140,7 @@ public class TowerConnector implements Serializable {
         }
 
         if(trustAllCerts && myURI.getScheme().equalsIgnoreCase("https")) {
-            logger.logMessage("Forcing cert trust");
+            logger.debug("Forcing cert trust");
             TrustingSSLSocketFactory sf;
             try {
                 KeyStore trustStore = KeyStore.getInstance(KeyStore.getDefaultType());
@@ -252,7 +251,7 @@ public class TowerConnector implements Serializable {
             throw new AnsibleTowerException("URL issue: "+ e.getMessage());
         }
 
-        logger.logMessage("Building "+ getMethodName(requestType) +" request to "+ myURI.toString());
+        logger.debug("Building "+ getMethodName(requestType) +" request to "+ myURI.toString());
 
         HttpUriRequest request;
         if(requestType == GET) {
@@ -277,32 +276,32 @@ public class TowerConnector implements Serializable {
         if(!noAuth) {
             if(this.authorizationHeader == null) {
                 // We dont' have an authorization header yet so we need to construct one
-                logger.logMessage("Determining authorization headers");
+                logger.debug("Determining authorization headers");
 
                 if(this.oauthToken != null) {
                     // First if we have an oauthToken we can just use it
-                    logger.logMessage("Adding oauth bearer token from Jenkins");
+                    logger.debug("Adding oauth bearer token from Jenkins");
                     this.authorizationHeader = "Bearer "+ this.oauthToken;
                 } else if(this.username != null && this.password != null) {
                     // Second, if we have a username and a password we can try to go get a token
 
                     // AAP controller mode uses the gateway token endpoint directly. Legacy Tower/AWX still probes /api/o/.
                     if (!shouldProbeOAuthSupport(this.apiBasePath) || this.towerSupports("/api/o/")) {
-                        logger.logMessage("Getting an oAuth token for "+ this.username);
+                        logger.debug("Requesting an OAuth token");
                         try {
                             this.authorizationHeader = "Bearer " + this.getOAuthToken();
                         } catch(AnsibleTowerException ate) {
-                            logger.logMessage("Unable to get oAuth Toekn: "+ ate.getMessage());
+                            logger.warning("Unable to get OAuth token: " + ate.getMessage());
                         }
                     }
 
                     // Second, we will try to get a legacy authtoken if Tower supports if
                     if(this.authorizationHeader == null && this.towerSupports(this.buildEndpoint("/authtoken/"))) {
-                        logger.logMessage("Getting a legacy token for " + this.username);
+                        logger.debug("Requesting a legacy auth token");
                         try {
                             this.authorizationHeader = "Token " + this.getAuthToken();
                         } catch (AnsibleTowerException ate) {
-                            logger.logMessage("Unable to get legacuy token: " + ate.getMessage());
+                            logger.warning("Unable to get legacy auth token: " + ate.getMessage());
                         }
                     }
 
@@ -331,7 +330,7 @@ public class TowerConnector implements Serializable {
                     */
 
                     if (this.authorizationHeader == null) {
-                        logger.logMessage("Tower does not support authtoken or oauth, reverting to basic auth");
+                        logger.debug("Tower does not support authtoken or oauth, reverting to basic auth");
                         this.authorizationHeader = this.getBasicAuthString();
                     }
                 } else {
@@ -346,9 +345,6 @@ public class TowerConnector implements Serializable {
             request.setHeader(HttpHeaders.AUTHORIZATION, this.authorizationHeader);
         }
 
-        // Dump the request
-        // logger.logMessage(this.dumpRequest(request));
-
         DefaultHttpClient httpClient = getHttpClient();
         HttpResponse response;
         try {
@@ -357,18 +353,24 @@ public class TowerConnector implements Serializable {
             throw new AnsibleTowerException("Unable to make tower request: "+ e.getMessage());
         }
 
-        logger.logMessage("Request completed with ("+ response.getStatusLine().getStatusCode() +")");
-        if(response.getStatusLine().getStatusCode() == 404) {
+        int statusCode = response.getStatusLine().getStatusCode();
+        String responseMetadata = "HTTP request completed: method=" + getMethodName(requestType)
+            + ", endpoint=" + buildEndpoint(endpoint) + ", httpStatus=" + statusCode;
+        if(statusCode >= 400) {
+            logger.warning(responseMetadata);
+        } else {
+            logger.debug(responseMetadata);
+        }
+        if(statusCode == 404) {
             throw new AnsibleTowerItemDoesNotExist("The item does not exist");
-        } else if(response.getStatusLine().getStatusCode() == 401) {
+        } else if(statusCode == 401) {
             throw new AnsibleTowerException("Username/password invalid");
-        } else if(response.getStatusLine().getStatusCode() == 403) {
+        } else if(statusCode == 403) {
             String exceptionText = "Request was forbidden";
             JSONObject responseObject = null;
             String json;
             try {
                 json = EntityUtils.toString(response.getEntity());
-                logger.logMessage(json);
                 responseObject = JSONObject.fromObject(json);
                 if(responseObject.containsKey("detail")) {
                     exceptionText+= ": "+ responseObject.getString("detail");
@@ -383,22 +385,6 @@ public class TowerConnector implements Serializable {
         return response;
     }
 
-
-    private String dumpRequest(HttpUriRequest theRequest) {
-        StringBuilder sb = new StringBuilder();
-
-        sb.append("Request Method = [" + theRequest.getMethod() + "], ");
-        sb.append("Request URL Path = [" + theRequest.getURI()+ "], ");
-
-        sb.append("[headers]");
-        for(Header aHeader : theRequest.getAllHeaders()) {
-            sb.append("    "+ aHeader.getName() +": "+ aHeader.getValue());
-        }
-
-        return sb.toString();
-    }
-
-
     private boolean towerSupports(String end_point) throws AnsibleTowerException {
         // To determine if we support oAuth we will be making a HEAD call to /api/o to see what happens
 
@@ -409,7 +395,7 @@ public class TowerConnector implements Serializable {
             throw new AnsibleTowerException("Unable to construct URL for "+ end_point +": "+ e.getMessage());
         }
 
-        logger.logMessage("Checking if Tower can: "+ myURI.toString());
+        logger.debug("Checking if Tower can: "+ myURI.toString());
 
         DefaultHttpClient httpClient = getHttpClient();
         HttpResponse response;
@@ -419,12 +405,12 @@ public class TowerConnector implements Serializable {
             throw new AnsibleTowerException("Unable to make Tower HEAD request for "+ end_point +": "+ e.getMessage());
         }
 
-        logger.logMessage("Can Tower request completed with ("+ response.getStatusLine().getStatusCode() +")");
+        logger.debug("Can Tower request completed with ("+ response.getStatusLine().getStatusCode() +")");
         if(response.getStatusLine().getStatusCode() == 404) {
-            logger.logMessage("Tower does not supoort "+ end_point);
+            logger.debug("Tower does not supoort "+ end_point);
             return false;
         } else {
-            logger.logMessage("Tower supoorts "+ end_point);
+            logger.debug("Tower supoorts "+ end_point);
             return true;
         }
     }
@@ -436,7 +422,7 @@ public class TowerConnector implements Serializable {
         if(response.getStatusLine().getStatusCode() != 200) {
             throw new AnsibleTowerException("Unexpected error code returned from ping connection ("+ response.getStatusLine().getStatusCode() +")");
         }
-        logger.logMessage("Ping page loaded");
+        logger.debug("Ping page loaded");
 
         JSONObject responseObject;
         String json;
@@ -448,7 +434,7 @@ public class TowerConnector implements Serializable {
         }
 
         if (responseObject.containsKey("version")) {
-            logger.logMessage("Successfully got version "+ responseObject.getString("version"));
+            logger.debug("Successfully got version "+ responseObject.getString("version"));
             this.towerVersion = new TowerVersion(responseObject.getString("version"));
         }
     }
@@ -460,7 +446,7 @@ public class TowerConnector implements Serializable {
         // straight into calling an authentication test
 
         // This will run an authentication test
-        logger.logMessage("Testing authentication");
+        logger.debug("Testing authentication");
         HttpResponse response = makeRequest(GET, "jobs/");
         if(response.getStatusLine().getStatusCode() != 200) {
             throw new AnsibleTowerException("Failed to get authenticated connection ("+ response.getStatusLine().getStatusCode() +")");
@@ -470,7 +456,7 @@ public class TowerConnector implements Serializable {
 
     public String convertPotentialStringToID(String idToCheck, String api_endpoint) throws AnsibleTowerException, AnsibleTowerItemDoesNotExist {
         JSONObject foundItem = rawLookupByString(idToCheck, api_endpoint);
-        logger.logMessage("Response from lookup: "+ foundItem.getString("id"));
+        logger.debug("Response from lookup: "+ foundItem.getString("id"));
         return foundItem.getString("id");
     }
 
@@ -591,10 +577,10 @@ public class TowerConnector implements Serializable {
         }
 
         if (vault_credential_type == -1L) {
-            logger.logMessage("[ERROR]: Unable to find vault credential type");
+            logger.warning("Unable to find vault credential type");
         }
         if (machine_credential_type == -1L) {
-            logger.logMessage("[ERROR]: Unable to find machine credential type");
+            logger.warning("Unable to find machine credential type");
         }
         /*
             Credential can be a comma delineated list and in 2.3.x can come in three types:
@@ -724,8 +710,8 @@ public class TowerConnector implements Serializable {
             if (responseObject.containsKey("id")) {
                 return responseObject.getLong("id");
             }
-            logger.logMessage(json);
-            throw new AnsibleTowerException("Did not get an ID from the request. Template response can be found in the jenkins.log");
+            logger.severe("Tower launch response did not contain a job ID");
+            throw new AnsibleTowerException("Did not get an ID from the Tower launch response");
         } else if(response.getStatusLine().getStatusCode() == 400) {
             String json = null;
             JSONObject responseObject = null;
@@ -733,8 +719,7 @@ public class TowerConnector implements Serializable {
                 json = EntityUtils.toString(response.getEntity());
                 responseObject = JSONObject.fromObject(json);
             } catch(Exception e) {
-                logger.logMessage("Unable to parse 400 response from json to get details: "+ e.getMessage());
-                logger.logMessage(json);
+                logger.warning("Unable to parse Tower 400 response: " + e.getMessage());
             }
 
             /*
@@ -747,9 +732,9 @@ public class TowerConnector implements Serializable {
             */
 
             if(responseObject != null && responseObject.containsKey("extra_vars")) {
-                throw new AnsibleTowerException("Extra vars are bad: "+ responseObject.getString("extra_vars"));
+                throw new AnsibleTowerException("Tower rejected the supplied extra vars");
             } else {
-                throw new AnsibleTowerException("Tower received a bad request (400 response code)\n" + json);
+                throw new AnsibleTowerException("Tower received a bad request (400 response code)");
             }
         } else {
             throw new AnsibleTowerException("Unexpected error code returned ("+ response.getStatusLine().getStatusCode() +")");
@@ -774,12 +759,9 @@ public class TowerConnector implements Serializable {
                 && retryCount < MAX_TRANSIENT_GATEWAY_RETRIES) {
             retryCount++;
             int statusCode = response.getStatusLine().getStatusCode();
-            logger.logMessage("Job status poll failed: jobID=" + jobID
-                + ", templateType=" + templateType
-                + ", endpoint=" + buildEndpoint(apiEndpoint)
-                + ", httpStatus=" + statusCode
-                + ", retry=" + retryCount + "/" + MAX_TRANSIENT_GATEWAY_RETRIES
-                + ", retryDelaySeconds=" + (TRANSIENT_GATEWAY_RETRY_DELAY_MS / 1000L));
+            logger.warning(buildRetryLogMessage("job_status_poll", jobID, templateType,
+                buildEndpoint(apiEndpoint), statusCode, retryCount, MAX_TRANSIENT_GATEWAY_RETRIES,
+                TRANSIENT_GATEWAY_RETRY_DELAY_MS));
             EntityUtils.consumeQuietly(response.getEntity());
             try {
                 Thread.sleep(TRANSIENT_GATEWAY_RETRY_DELAY_MS);
@@ -789,6 +771,12 @@ public class TowerConnector implements Serializable {
                     + statusCode + " for job " + jobID);
             }
             response = makeRequest(GET, apiEndpoint);
+        }
+
+        if(isTransientGatewayStatus(response.getStatusLine().getStatusCode())) {
+            logger.severe(buildRetryExhaustedLogMessage("job_status_poll", jobID, templateType,
+                buildEndpoint(apiEndpoint), response.getStatusLine().getStatusCode(),
+                MAX_TRANSIENT_GATEWAY_RETRIES + 1));
         }
 
         if(response.getStatusLine().getStatusCode() == 200) {
@@ -808,7 +796,7 @@ public class TowerConnector implements Serializable {
                 } else {
                     // Since we were finished we will now also check for stats
                     if(responseObject.containsKey(ARTIFACTS)) {
-                        logger.logMessage("Processing artifacts");
+                        logger.debug("Processing artifacts");
                         JSONObject artifacts = responseObject.getJSONObject(ARTIFACTS);
                         if(artifacts.containsKey("JENKINS_EXPORT")) {
                             JSONArray exportVariables = artifacts.getJSONArray("JENKINS_EXPORT");
@@ -826,8 +814,9 @@ public class TowerConnector implements Serializable {
                     return true;
                 }
             }
-            logger.logMessage(json);
-            throw new AnsibleTowerException("Did not get a failed status from the request. Job response can be found in the jenkins.log");
+            logger.severe("Tower job status response did not contain finished: jobId=" + jobID
+                + ", templateType=" + templateType);
+            throw new AnsibleTowerException("Tower job response did not contain a finished status");
         } else {
             throw new AnsibleTowerException("Unexpected error code returned (" + response.getStatusLine().getStatusCode() + ")");
         }
@@ -835,6 +824,25 @@ public class TowerConnector implements Serializable {
 
     static boolean isTransientGatewayStatus(int statusCode) {
         return statusCode == 502 || statusCode == 503 || statusCode == 504;
+    }
+
+    static String buildRetryLogMessage(String operation, long jobID, String templateType, String endpoint,
+            int statusCode, int attempt, int maxAttempts, long retryDelayMs) {
+        return operation + " failed: jobId=" + jobID
+            + ", templateType=" + templateType
+            + ", endpoint=" + endpoint
+            + ", httpStatus=" + statusCode
+            + ", attempt=" + attempt + "/" + maxAttempts
+            + ", retryDelayMs=" + retryDelayMs;
+    }
+
+    static String buildRetryExhaustedLogMessage(String operation, long jobID, String templateType,
+            String endpoint, int statusCode, int attempts) {
+        return operation + " exhausted retries: jobId=" + jobID
+            + ", templateType=" + templateType
+            + ", endpoint=" + endpoint
+            + ", httpStatus=" + statusCode
+            + ", attempts=" + attempts;
     }
 
     public void cancelJob(long jobID, String templateType) throws AnsibleTowerException {
@@ -935,11 +943,9 @@ public class TowerConnector implements Serializable {
                 && retryCount < MAX_TRANSIENT_GATEWAY_RETRIES) {
             retryCount++;
             int statusCode = response.getStatusLine().getStatusCode();
-            logger.logMessage("Workflow events poll failed: jobID=" + jobID
-                + ", endpoint=" + buildEndpoint(apiEndpoint)
-                + ", httpStatus=" + statusCode
-                + ", retry=" + retryCount + "/" + MAX_TRANSIENT_GATEWAY_RETRIES
-                + ", retryDelaySeconds=" + (TRANSIENT_GATEWAY_RETRY_DELAY_MS / 1000L));
+            logger.warning(buildRetryLogMessage("workflow_events_poll", jobID, WORKFLOW_TEMPLATE_TYPE,
+                buildEndpoint(apiEndpoint), statusCode, retryCount, MAX_TRANSIENT_GATEWAY_RETRIES,
+                TRANSIENT_GATEWAY_RETRY_DELAY_MS));
             EntityUtils.consumeQuietly(response.getEntity());
             try {
                 Thread.sleep(TRANSIENT_GATEWAY_RETRY_DELAY_MS);
@@ -949,6 +955,12 @@ public class TowerConnector implements Serializable {
                     + statusCode + " for job " + jobID);
             }
             response = makeRequest(GET, apiEndpoint);
+        }
+
+        if(isTransientGatewayStatus(response.getStatusLine().getStatusCode())) {
+            logger.severe(buildRetryExhaustedLogMessage("workflow_events_poll", jobID,
+                WORKFLOW_TEMPLATE_TYPE, buildEndpoint(apiEndpoint),
+                response.getStatusLine().getStatusCode(), MAX_TRANSIENT_GATEWAY_RETRIES + 1));
         }
 
         if(response.getStatusLine().getStatusCode() == 200) {
@@ -961,9 +973,9 @@ public class TowerConnector implements Serializable {
                 throw new AnsibleTowerException("Unable to read response and convert it into json: "+ ioe.getMessage());
             }
 
-            logger.logMessage(json);
-
             if(responseObject.containsKey("results")) {
+                logger.debug("Workflow events received: jobId=" + jobID
+                    + ", resultCount=" + responseObject.getJSONArray("results").size());
                 for(Object anEventObject : responseObject.getJSONArray("results")) {
                     JSONObject anEvent = (JSONObject) anEventObject;
                     long eventId = anEvent.getLong("id");
@@ -1061,7 +1073,8 @@ public class TowerConnector implements Serializable {
                 throw new AnsibleTowerException("Unable to read response and convert it into json: "+ ioe.getMessage());
             }
 
-            logger.logMessage(json);
+            logger.debug("Inventory sync output received: syncId=" + syncID
+                + ", hasStdout=" + responseObject.containsKey("result_stdout"));
 
             if(responseObject.containsKey("result_stdout")) {
                 events.addAll(logLine(responseObject.getString("result_stdout")));
@@ -1088,7 +1101,8 @@ public class TowerConnector implements Serializable {
                 throw new AnsibleTowerException("Unable to read response and convert it into json: "+ ioe.getMessage());
             }
 
-            logger.logMessage(json);
+            logger.debug("Project sync output received: syncId=" + syncID
+                + ", hasStdout=" + responseObject.containsKey("result_stdout"));
 
             if(responseObject.containsKey("result_stdout")) {
                 events.addAll(logLine(responseObject.getString("result_stdout")));
@@ -1117,12 +1131,12 @@ public class TowerConnector implements Serializable {
                     throw new AnsibleTowerException("Unable to read response and convert it into json: " + ioe.getMessage());
                 }
 
-                logger.logMessage(json);
-
                 if(responseObject.containsKey("next") && responseObject.getString("next") == null || responseObject.getString("next").equalsIgnoreCase("null")) {
                     keepChecking = false;
                 }
                 if (responseObject.containsKey("results")) {
+                    logger.debug("Job events received: jobId=" + jobID
+                        + ", resultCount=" + responseObject.getJSONArray("results").size());
                     for (Object anEvent : responseObject.getJSONArray("results")) {
                         JSONObject eventObject = (JSONObject) anEvent;
                         long eventId = eventObject.getLong("id");
@@ -1170,8 +1184,9 @@ public class TowerConnector implements Serializable {
             if (responseObject.containsKey("failed")) {
                 return responseObject.getBoolean("failed");
             }
-            logger.logMessage(json);
-            throw new AnsibleTowerException("Did not get a failed status from the request. Job response can be found in the jenkins.log");
+            logger.severe("Tower job response did not contain failed: jobId=" + jobID
+                + ", templateType=" + templateType);
+            throw new AnsibleTowerException("Tower job response did not contain a failed status");
         } else {
             throw new AnsibleTowerException("Unexpected error code returned (" + response.getStatusLine().getStatusCode() + ")");
         }
@@ -1207,7 +1222,7 @@ public class TowerConnector implements Serializable {
         DefaultHttpClient httpClient = getHttpClient();
         HttpResponse response;
         try {
-            logger.logMessage("Calling for oauth token at "+ tokenURI);
+            logger.debug("Calling for oauth token at "+ tokenURI);
             response = httpClient.execute(oauthTokenRequest);
         } catch(Exception e) {
             throw new AnsibleTowerException("Unable to make request for an oauth token: "+ e.getMessage());
@@ -1238,15 +1253,15 @@ public class TowerConnector implements Serializable {
         }
 
         if (responseObject.containsKey("token")) {
-            logger.logMessage("AuthToken acquired ("+ this.oAuthTokenID +")");
+            logger.debug("OAuth token acquired");
             return responseObject.getString("token");
         }
-        logger.logMessage(json);
-        throw new AnsibleTowerException("Did not get an oauth token from the request. Template response can be found in the jenkins.log");
+        logger.severe("OAuth token response did not contain a token");
+        throw new AnsibleTowerException("OAuth token response did not contain a token");
     }
 
     private String getAuthToken() throws AnsibleTowerException {
-        logger.logMessage("Getting auth token for "+ this.username);
+        logger.debug("Requesting auth token");
 
         String tokenURI = url + this.buildEndpoint("/authtoken/");
         HttpPost tokenRequest = new HttpPost(tokenURI);
@@ -1261,7 +1276,7 @@ public class TowerConnector implements Serializable {
         DefaultHttpClient httpClient = getHttpClient();
         HttpResponse response;
         try {
-            logger.logMessage("Calling for token at "+ tokenURI);
+            logger.debug("Calling for token at "+ tokenURI);
             response = httpClient.execute(tokenRequest);
         } catch(Exception e) {
             throw new AnsibleTowerException("Unable to make request for an authtoken: "+ e.getMessage());
@@ -1285,16 +1300,16 @@ public class TowerConnector implements Serializable {
         }
 
         if (responseObject.containsKey("token")) {
-            logger.logMessage("AuthToken acquired");
+            logger.debug("AuthToken acquired");
             return responseObject.getString("token");
         }
-        logger.logMessage(json);
-        throw new AnsibleTowerException("Did not get a token from the request. Template response can be found in the jenkins.log");
+        logger.severe("Auth token response did not contain a token");
+        throw new AnsibleTowerException("Auth token response did not contain a token");
     }
 
     public void releaseToken() {
         if(this.oAuthTokenID != null) {
-            logger.logMessage("Deleting oAuth token "+ this.oAuthTokenID +" for " + this.username);
+            logger.debug("Deleting OAuth token");
             try {
                 String tokenEndpoint = this.oAuthTokenBaseEndpoint;
                 if(tokenEndpoint == null) {
@@ -1305,20 +1320,21 @@ public class TowerConnector implements Serializable {
                 tokenRequest.setHeader(HttpHeaders.AUTHORIZATION, this.getBasicAuthString());
 
                 DefaultHttpClient httpClient = getHttpClient();
-                logger.logMessage("Calling for oAuth token delete at " + tokenURI);
+                logger.debug("Calling OAuth token delete: endpoint=" + tokenEndpoint);
                 HttpResponse response = httpClient.execute(tokenRequest);
                 if(response.getStatusLine().getStatusCode() == 400) {
-                    logger.logMessage("Unable to delete oAuthToken: Invalid Authorization");
+                    logger.warning("Unable to delete OAuth token: invalid authorization");
                 } else if(response.getStatusLine().getStatusCode() != 204) {
-                    logger.logMessage("Unable to delete oauth token, server responded with ("+ response.getStatusLine().getStatusCode() +")");
+                    logger.warning("Unable to delete OAuth token: httpStatus="
+                        + response.getStatusLine().getStatusCode());
                 }
-                logger.logMessage("oAuth Token deleted");
+                logger.debug("oAuth Token deleted");
 
                 this.oAuthTokenID = null;
                 this.oAuthTokenBaseEndpoint = null;
                 this.authorizationHeader = null;
             } catch(Exception e) {
-                logger.logMessage("Failed to delete token: "+ e.getMessage());
+                logger.warning("Failed to delete OAuth token: " + e.getMessage());
             }
 
         }
