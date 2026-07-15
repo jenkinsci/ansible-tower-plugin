@@ -17,6 +17,7 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.URLEncoder;
 import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.security.KeyStore;
 import java.util.*;
 
@@ -186,6 +187,10 @@ public class TowerConnector implements Serializable {
         return buildEndpoint("/tokens/", apiBasePath);
     }
 
+    static StringEntity createJsonEntity(JSONObject body) {
+        return new StringEntity(body.toString(), StandardCharsets.UTF_8);
+    }
+
     static boolean isAAPControllerMode(String apiBasePath) {
         return API_BASE_PATH_AAP_CONTROLLER.equals(normalizeApiBasePath(apiBasePath));
     }
@@ -260,12 +265,7 @@ public class TowerConnector implements Serializable {
                 myRequest = new HttpPatch(myURI);
             }
             if (body != null && !body.isEmpty()) {
-                try {
-                    StringEntity bodyEntity = new StringEntity(body.toString());
-                    myRequest.setEntity(bodyEntity);
-                } catch (UnsupportedEncodingException uee) {
-                    throw new AnsibleTowerException("Unable to encode body as JSON: " + uee.getMessage());
-                }
+                myRequest.setEntity(createJsonEntity(body));
             }
             request = myRequest;
             request.setHeader("Content-Type", "application/json");
@@ -1197,12 +1197,7 @@ public class TowerConnector implements Serializable {
         body.put("description", "Jenkins Token");
         body.put("application", null);
         body.put("scope", "write");
-        try {
-            StringEntity bodyEntity = new StringEntity(body.toString());
-            oauthTokenRequest.setEntity(bodyEntity);
-        } catch(UnsupportedEncodingException uee) {
-            throw new AnsibleTowerException("Unable to encode body as JSON: "+ uee.getMessage());
-        }
+        oauthTokenRequest.setEntity(createJsonEntity(body));
 
         oauthTokenRequest.setHeader("Content-Type", "application/json");
 
@@ -1256,12 +1251,7 @@ public class TowerConnector implements Serializable {
         JSONObject body = new JSONObject();
         body.put("username", this.username);
         body.put("password", this.password);
-        try {
-            StringEntity bodyEntity = new StringEntity(body.toString());
-            tokenRequest.setEntity(bodyEntity);
-        } catch(UnsupportedEncodingException uee) {
-            throw new AnsibleTowerException("Unable to encode body as JSON: "+ uee.getMessage());
-        }
+        tokenRequest.setEntity(createJsonEntity(body));
 
         tokenRequest.setHeader("Content-Type", "application/json");
 
