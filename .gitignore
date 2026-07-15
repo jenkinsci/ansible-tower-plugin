@@ -9,3 +9,6 @@
 .settings/
 .java-version
 src/test
+
+#VSCODE IDE
+.vscode/

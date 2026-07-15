@@ -47,21 +47,27 @@ public class TowerConnector implements Serializable {
     public static final int PATCH = 3;
     public static final String JOB_TEMPLATE_TYPE = "job";
     public static final String WORKFLOW_TEMPLATE_TYPE = "workflow";
+    public static final String API_BASE_PATH_LEGACY = "/api/v2";
+    public static final String API_BASE_PATH_AAP_CONTROLLER = "/api/controller/v2";
+    public static final String API_GATEWAY_TOKEN_ENDPOINT = "/api/gateway/v1/tokens/";
     private static final String ARTIFACTS = "artifacts";
-    private static String API_VERSION = "v2";
+    private static final int MAX_TRANSIENT_GATEWAY_RETRIES = 5;
+    private static final long TRANSIENT_GATEWAY_RETRY_DELAY_MS = 10000L;
 
     private String authorizationHeader = null;
     private String oauthToken = null;
     private String oAuthTokenID = null;
+    private String oAuthTokenBaseEndpoint = null;
     private String url = null;
+    private String apiBasePath = API_BASE_PATH_LEGACY;
     private String username = null;
     private String password = null;
     private TowerVersion towerVersion = null;
     private boolean trustAllCerts = true;
     private boolean importChildWorkflowLogs = false;
     private TowerLogger logger = new TowerLogger();
-    private HashMap<Integer, Integer> logIdForWorkflows = new HashMap<Integer, Integer>();
-    private HashMap<Integer, Integer> logIdForJobs = new HashMap<Integer, Integer>();
+    private HashMap<Long, Long> logIdForWorkflows = new HashMap<Long, Long>();
+    private HashMap<Long, Long> logIdForJobs = new HashMap<Long, Long>();
 
     private boolean removeColor = true;
     private boolean getFullLogs = false;
@@ -70,11 +76,12 @@ public class TowerConnector implements Serializable {
     public TowerConnector(String url, String username, String password) { this(url, username, password, null, false, false); }
 
     public TowerConnector(String url, String username, String password, String oauthToken, Boolean trustAllCerts, Boolean debug) {
-        // Credit to https://stackoverflow.com/questions/7438612/how-to-remove-the-last-character-from-a-string
-        if(url != null && url.length() > 0 && url.charAt(url.length() - 1) == '/') {
-            url = url.substring(0, (url.length() - 1));
-        }
-        this.url = url;
+        this(url, username, password, oauthToken, trustAllCerts, debug, API_BASE_PATH_LEGACY);
+    }
+
+    public TowerConnector(String url, String username, String password, String oauthToken, Boolean trustAllCerts, Boolean debug, String apiBasePath) {
+        this.url = normalizeBaseURL(url);
+        this.apiBasePath = normalizeApiBasePath(apiBasePath);
         this.username = username;
         this.password = password;
         this.oauthToken = oauthToken;
@@ -99,6 +106,30 @@ public class TowerConnector implements Serializable {
     public void setGetWorkflowChildLogs(boolean importChildWorkflowLogs) { this.importChildWorkflowLogs = importChildWorkflowLogs; }
     public void setGetFullLogs(boolean getFullLogs) { this.getFullLogs = getFullLogs; }
     public HashMap<String, String> getJenkinsExports() { return jenkinsExports; }
+
+    static String normalizeBaseURL(String baseURL) {
+        if(baseURL != null) {
+            baseURL = baseURL.trim();
+            if(baseURL.length() > 0 && baseURL.charAt(baseURL.length() - 1) == '/') {
+                baseURL = baseURL.substring(0, (baseURL.length() - 1));
+            }
+        }
+        return baseURL;
+    }
+
+    static String normalizeApiBasePath(String apiBasePath) {
+        if(apiBasePath == null || apiBasePath.trim().isEmpty()) {
+            return API_BASE_PATH_LEGACY;
+        }
+        apiBasePath = apiBasePath.trim();
+        if(!apiBasePath.startsWith("/")) {
+            apiBasePath = "/" + apiBasePath;
+        }
+        if(apiBasePath.endsWith("/")) {
+            apiBasePath = apiBasePath.substring(0, apiBasePath.length() - 1);
+        }
+        return apiBasePath;
+    }
 
     private DefaultHttpClient getHttpClient() throws AnsibleTowerException {
         URI myURI = null;
@@ -136,12 +167,67 @@ public class TowerConnector implements Serializable {
     }
 
     private String buildEndpoint(String endpoint) {
+        return buildEndpoint(endpoint, this.apiBasePath);
+    }
+
+    static String buildEndpoint(String endpoint, String apiBasePath) {
         if(endpoint.startsWith("/api/")) { return endpoint; }
 
-        String full_endpoint = "/api/"+ API_VERSION;
+        String full_endpoint = normalizeApiBasePath(apiBasePath);
         if(!endpoint.startsWith("/")) { full_endpoint += "/"; }
         full_endpoint += endpoint;
         return full_endpoint;
+    }
+
+    static String buildOAuthTokenEndpoint(String apiBasePath) {
+        if(API_BASE_PATH_AAP_CONTROLLER.equals(normalizeApiBasePath(apiBasePath))) {
+            return API_GATEWAY_TOKEN_ENDPOINT;
+        }
+        return buildEndpoint("/tokens/", apiBasePath);
+    }
+
+    static boolean isAAPControllerMode(String apiBasePath) {
+        return API_BASE_PATH_AAP_CONTROLLER.equals(normalizeApiBasePath(apiBasePath));
+    }
+
+    static boolean shouldProbeOAuthSupport(String apiBasePath) {
+        return !isAAPControllerMode(apiBasePath);
+    }
+
+    static String buildJobURL(String uiBaseURL, String apiBasePath, long jobID, String jobType) {
+        uiBaseURL = normalizeBaseURL(uiBaseURL);
+        jobType = normalizeJobType(jobType);
+
+        if(isAAPControllerMode(apiBasePath)) {
+            if("workflow_job".equals(jobType)) {
+                return uiBaseURL + "/execution/jobs/workflow/" + jobID + "/output";
+            } else if("project_update".equals(jobType)) {
+                return uiBaseURL + "/execution/jobs/project_update/" + jobID + "/output";
+            } else if("inventory_update".equals(jobType)) {
+                return uiBaseURL + "/execution/jobs/inventory_update/" + jobID + "/output";
+            }
+            return uiBaseURL + "/execution/jobs/playbook/" + jobID + "/output";
+        }
+
+        if("workflow_job".equals(jobType)) {
+            return uiBaseURL + "/#/jobs/workflow/" + jobID;
+        } else if("project_update".equals(jobType)) {
+            return uiBaseURL + "/#/jobs/project/" + jobID;
+        } else if("inventory_update".equals(jobType)) {
+            return uiBaseURL + "/#/jobs/inventory/" + jobID;
+        }
+        return uiBaseURL + "/#/jobs/" + jobID;
+    }
+
+    private static String normalizeJobType(String jobType) {
+        if(jobType == null || jobType.trim().isEmpty()) {
+            return JOB_TEMPLATE_TYPE;
+        }
+        jobType = jobType.trim().toLowerCase();
+        if(WORKFLOW_TEMPLATE_TYPE.equals(jobType)) {
+            return "workflow_job";
+        }
+        return jobType;
     }
 
     private HttpResponse makeRequest(int requestType, String endpoint) throws AnsibleTowerException {
@@ -196,8 +282,8 @@ public class TowerConnector implements Serializable {
                 } else if(this.username != null && this.password != null) {
                     // Second, if we have a username and a password we can try to go get a token
 
-                    // For trying to get a token, we will first attempt to self create an oAuthToken if Tower supports it
-                    if (this.towerSupports("/api/o/")) {
+                    // AAP controller mode uses the gateway token endpoint directly. Legacy Tower/AWX still probes /api/o/.
+                    if (!shouldProbeOAuthSupport(this.apiBasePath) || this.towerSupports("/api/o/")) {
                         logger.logMessage("Getting an oAuth token for "+ this.username);
                         try {
                             this.authorizationHeader = "Bearer " + this.getOAuthToken();
@@ -207,7 +293,7 @@ public class TowerConnector implements Serializable {
                     }
 
                     // Second, we will try to get a legacy authtoken if Tower supports if
-                    if(this.authorizationHeader == null && this.towerSupports("/api/v2/authtoken")) {
+                    if(this.authorizationHeader == null && this.towerSupports(this.buildEndpoint("/authtoken/"))) {
                         logger.logMessage("Getting a legacy token for " + this.username);
                         try {
                             this.authorizationHeader = "Token " + this.getAuthToken();
@@ -487,23 +573,23 @@ public class TowerConnector implements Serializable {
             throw new AnsibleTowerException("Unable to find both machine and vault credentials type");
         }
 
-        int machine_credential_type = -1;
-        int vault_credential_type = -1;
+        long machine_credential_type = -1L;
+        long vault_credential_type = -1L;
         JSONArray credentialTypesArray = responseObject.getJSONArray("results");
         Iterator<JSONObject> listIterator = credentialTypesArray.iterator();
         while(listIterator.hasNext()) {
             JSONObject aCredentialType = listIterator.next();
             if(aCredentialType.getString("kind").equalsIgnoreCase("ssh")) {
-                machine_credential_type = aCredentialType.getInt("id");
+                machine_credential_type = aCredentialType.getLong("id");
             } else if(aCredentialType.getString("kind").equalsIgnoreCase("vault")) {
-                vault_credential_type = aCredentialType.getInt("id");
+                vault_credential_type = aCredentialType.getLong("id");
             }
         }
 
-        if (vault_credential_type == -1) {
+        if (vault_credential_type == -1L) {
             logger.logMessage("[ERROR]: Unable to find vault credential type");
         }
-        if (machine_credential_type == -1) {
+        if (machine_credential_type == -1L) {
             logger.logMessage("[ERROR]: Unable to find machine credential type");
         }
         /*
@@ -516,10 +602,10 @@ public class TowerConnector implements Serializable {
                     Split the string on , and loop over each item
                     Find it in Tower and sort it into its type
          */
-        HashMap<String, Vector<Integer>> credentials = new HashMap<String, Vector<Integer>>();
-        credentials.put("vault", new Vector<Integer>());
-        credentials.put("machine", new Vector<Integer>());
-        credentials.put("extra", new Vector<Integer>());
+        HashMap<String, Vector<Long>> credentials = new HashMap<String, Vector<Long>>();
+        credentials.put("vault", new Vector<Long>());
+        credentials.put("machine", new Vector<Long>());
+        credentials.put("extra", new Vector<Long>());
         for(String credentialString : credential.split(","))  {
             try {
                 JSONObject jsonCredential = rawLookupByString(credentialString, "/credentials/");
@@ -532,7 +618,7 @@ public class TowerConnector implements Serializable {
                 } else {
                     myCredentialType = "extra";
                 }
-                credentials.get(myCredentialType).add(jsonCredential.getInt("id"));
+                credentials.get(myCredentialType).add(jsonCredential.getLong("id"));
             } catch(AnsibleTowerItemDoesNotExist ateide) {
                 throw new AnsibleTowerException("Credential "+ credentialString +" does not exist in tower");
             } catch(AnsibleTowerException ate) {
@@ -576,7 +662,7 @@ public class TowerConnector implements Serializable {
     }
 
 
-    public int submitTemplate(int jobTemplate, String extraVars, String limit, String jobTags, String skipJobTags, String jobType, String inventory, String credential, String scmBranch, String templateType) throws AnsibleTowerException {
+    public long submitTemplate(long jobTemplate, String extraVars, String limit, String jobTags, String skipJobTags, String jobType, String inventory, String credential, String scmBranch, String templateType) throws AnsibleTowerException {
         checkTemplateType(templateType);
 
         String apiEndPoint = "/job_templates/";
@@ -632,7 +718,7 @@ public class TowerConnector implements Serializable {
             }
 
             if (responseObject.containsKey("id")) {
-                return responseObject.getInt("id");
+                return responseObject.getLong("id");
             }
             logger.logMessage(json);
             throw new AnsibleTowerException("Did not get an ID from the request. Template response can be found in the jenkins.log");
@@ -672,12 +758,34 @@ public class TowerConnector implements Serializable {
         throw new AnsibleTowerException("Template type can only be '"+ JOB_TEMPLATE_TYPE +"' or '"+ WORKFLOW_TEMPLATE_TYPE+"'");
     }
 
-    public boolean isJobCompleted(int jobID, String templateType) throws AnsibleTowerException {
+    public boolean isJobCompleted(long jobID, String templateType) throws AnsibleTowerException {
         checkTemplateType(templateType);
 
         String apiEndpoint = "/jobs/"+ jobID +"/";
         if(templateType.equalsIgnoreCase(WORKFLOW_TEMPLATE_TYPE)) { apiEndpoint = "/workflow_jobs/"+ jobID +"/"; }
         HttpResponse response = makeRequest(GET, apiEndpoint);
+
+        int retryCount = 0;
+        while(isTransientGatewayStatus(response.getStatusLine().getStatusCode())
+                && retryCount < MAX_TRANSIENT_GATEWAY_RETRIES) {
+            retryCount++;
+            int statusCode = response.getStatusLine().getStatusCode();
+            logger.logMessage("Job status poll failed: jobID=" + jobID
+                + ", templateType=" + templateType
+                + ", endpoint=" + buildEndpoint(apiEndpoint)
+                + ", httpStatus=" + statusCode
+                + ", retry=" + retryCount + "/" + MAX_TRANSIENT_GATEWAY_RETRIES
+                + ", retryDelaySeconds=" + (TRANSIENT_GATEWAY_RETRY_DELAY_MS / 1000L));
+            EntityUtils.consumeQuietly(response.getEntity());
+            try {
+                Thread.sleep(TRANSIENT_GATEWAY_RETRY_DELAY_MS);
+            } catch(InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                throw new AnsibleTowerException("Interrupted while retrying job status request after HTTP "
+                    + statusCode + " for job " + jobID);
+            }
+            response = makeRequest(GET, apiEndpoint);
+        }
 
         if(response.getStatusLine().getStatusCode() == 200) {
             JSONObject responseObject;
@@ -721,7 +829,11 @@ public class TowerConnector implements Serializable {
         }
     }
 
-    public void cancelJob(int jobID, String templateType) throws AnsibleTowerException {
+    static boolean isTransientGatewayStatus(int statusCode) {
+        return statusCode == 502 || statusCode == 503 || statusCode == 504;
+    }
+
+    public void cancelJob(long jobID, String templateType) throws AnsibleTowerException {
         checkTemplateType(templateType);
 
         String apiEndpoint = "/jobs/"+ jobID +"/";
@@ -788,11 +900,11 @@ public class TowerConnector implements Serializable {
      * Use isJobCompleted
      */
     @Deprecated
-    public boolean isJobCommpleted(int jobID, String templateType) throws AnsibleTowerException {
+    public boolean isJobCommpleted(long jobID, String templateType) throws AnsibleTowerException {
         return isJobCompleted(jobID, templateType);
     }
 
-    public Vector<String> getLogEvents(int jobID, String templateType) throws AnsibleTowerException {
+    public Vector<String> getLogEvents(long jobID, String templateType) throws AnsibleTowerException {
         Vector<String> events = new Vector<String>();
         checkTemplateType(templateType);
         if(templateType.equalsIgnoreCase(JOB_TEMPLATE_TYPE)) {
@@ -808,10 +920,32 @@ public class TowerConnector implements Serializable {
     private static String UNIFIED_JOB_TYPE = "unified_job_type";
     private static String UNIFIED_JOB_TEMPLATE = "unified_job_template";
 
-    private Vector<String> logWorkflowEvents(int jobID, boolean importWorkflowChildLogs) throws AnsibleTowerException {
+    private Vector<String> logWorkflowEvents(long jobID, boolean importWorkflowChildLogs) throws AnsibleTowerException {
         Vector<String> events = new Vector<String>();
-        if(!this.logIdForWorkflows.containsKey(jobID)) { this.logIdForWorkflows.put(jobID, 0); }
-        HttpResponse response = makeRequest(GET, "/workflow_jobs/"+ jobID +"/workflow_nodes/?id__gt="+this.logIdForWorkflows.get(jobID));
+        if(!this.logIdForWorkflows.containsKey(jobID)) { this.logIdForWorkflows.put(jobID, 0L); }
+        String apiEndpoint = "/workflow_jobs/"+ jobID +"/workflow_nodes/?id__gt="+this.logIdForWorkflows.get(jobID);
+        HttpResponse response = makeRequest(GET, apiEndpoint);
+
+        int retryCount = 0;
+        while(isTransientGatewayStatus(response.getStatusLine().getStatusCode())
+                && retryCount < MAX_TRANSIENT_GATEWAY_RETRIES) {
+            retryCount++;
+            int statusCode = response.getStatusLine().getStatusCode();
+            logger.logMessage("Workflow events poll failed: jobID=" + jobID
+                + ", endpoint=" + buildEndpoint(apiEndpoint)
+                + ", httpStatus=" + statusCode
+                + ", retry=" + retryCount + "/" + MAX_TRANSIENT_GATEWAY_RETRIES
+                + ", retryDelaySeconds=" + (TRANSIENT_GATEWAY_RETRY_DELAY_MS / 1000L));
+            EntityUtils.consumeQuietly(response.getEntity());
+            try {
+                Thread.sleep(TRANSIENT_GATEWAY_RETRY_DELAY_MS);
+            } catch(InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                throw new AnsibleTowerException("Interrupted while retrying workflow events request after HTTP "
+                    + statusCode + " for job " + jobID);
+            }
+            response = makeRequest(GET, apiEndpoint);
+        }
 
         if(response.getStatusLine().getStatusCode() == 200) {
             JSONObject responseObject;
@@ -828,7 +962,7 @@ public class TowerConnector implements Serializable {
             if(responseObject.containsKey("results")) {
                 for(Object anEventObject : responseObject.getJSONArray("results")) {
                     JSONObject anEvent = (JSONObject) anEventObject;
-                    Integer eventId = anEvent.getInt("id");
+                    long eventId = anEvent.getLong("id");
 
                     if(!anEvent.containsKey("summary_fields")) { continue; }
 
@@ -855,16 +989,16 @@ public class TowerConnector implements Serializable {
                     }
 
                     if(eventId > this.logIdForWorkflows.get(jobID)) { this.logIdForWorkflows.put(jobID, eventId); }
-                    events.addAll(logLine(job.getString("name") +" => "+ job.getString("status") +" "+ this.getJobURL(job.getInt("id"), JOB_TEMPLATE_TYPE)));
+                    events.addAll(logLine(job.getString("name") +" => "+ job.getString("status") +" "+ this.getJobURL(job.getLong("id"), templateType.getString(UNIFIED_JOB_TYPE))));
 
                     if(importWorkflowChildLogs) {
                         if(templateType.getString(UNIFIED_JOB_TYPE).equalsIgnoreCase("job")) {
                             // We only need to call this once because the job is completed at this point
-                            events.addAll(logJobEvents(job.getInt("id")));
+                            events.addAll(logJobEvents(job.getLong("id")));
                         } else if(templateType.getString(UNIFIED_JOB_TYPE).equalsIgnoreCase("project_update")) {
-                            events.addAll(logProjectSync(job.getInt("id")));
+                            events.addAll(logProjectSync(job.getLong("id")));
                         } else if(templateType.getString(UNIFIED_JOB_TYPE).equalsIgnoreCase("inventory_update")) {
-                            events.addAll(logInventorySync(job.getInt("id")));
+                            events.addAll(logInventorySync(job.getLong("id")));
                         } else {
                             events.addAll(logLine("Unknown job type in workflow: "+ templateType.getString(UNIFIED_JOB_TYPE)));
                         }
@@ -908,7 +1042,7 @@ public class TowerConnector implements Serializable {
     }
 
 
-    private Vector<String> logInventorySync(int syncID) throws AnsibleTowerException {
+    private Vector<String> logInventorySync(long syncID) throws AnsibleTowerException {
         Vector<String> events = new Vector<String>();
         // These are not normal logs, so we don't need to paginate
         String apiURL = "/inventory_updates/"+ syncID +"/";
@@ -935,7 +1069,7 @@ public class TowerConnector implements Serializable {
     }
 
 
-    private Vector<String> logProjectSync(int syncID) throws AnsibleTowerException {
+    private Vector<String> logProjectSync(long syncID) throws AnsibleTowerException {
         Vector<String> events = new Vector<String>();
         // These are not normal logs, so we don't need to paginate
         String apiURL = "/project_updates/"+ syncID +"/";
@@ -961,9 +1095,9 @@ public class TowerConnector implements Serializable {
         return events;
     }
 
-    private Vector<String> logJobEvents(int jobID) throws AnsibleTowerException {
+    private Vector<String> logJobEvents(long jobID) throws AnsibleTowerException {
         Vector<String> events = new Vector<String>();
-        if(!this.logIdForJobs.containsKey(jobID)) { this.logIdForJobs.put(jobID, 0); }
+        if(!this.logIdForJobs.containsKey(jobID)) { this.logIdForJobs.put(jobID, 0L); }
         boolean keepChecking = true;
         while(keepChecking) {
             String apiURL = "/jobs/" + jobID + "/job_events/?id__gt="+ this.logIdForJobs.get(jobID);
@@ -987,7 +1121,7 @@ public class TowerConnector implements Serializable {
                 if (responseObject.containsKey("results")) {
                     for (Object anEvent : responseObject.getJSONArray("results")) {
                         JSONObject eventObject = (JSONObject) anEvent;
-                        Integer eventId = eventObject.getInt("id");
+                        long eventId = eventObject.getLong("id");
                         String stdOut = eventObject.getString("stdout");
                         if(this.getFullLogs) {
                             try {
@@ -1009,7 +1143,7 @@ public class TowerConnector implements Serializable {
         return events;
     }
 
-    public boolean isJobFailed(int jobID, String templateType) throws AnsibleTowerException {
+    public boolean isJobFailed(long jobID, String templateType) throws AnsibleTowerException {
         checkTemplateType(templateType);
 
         String apiEndPoint = "/jobs/"+ jobID +"/";
@@ -1036,15 +1170,12 @@ public class TowerConnector implements Serializable {
         }
     }
 
-    public String getJobURL(int myJobID, String templateType) {
-        String returnURL = url +"/#/";
-        if (templateType.equalsIgnoreCase(TowerConnector.JOB_TEMPLATE_TYPE)) {
-            returnURL += "jobs";
-        } else {
-            returnURL += "workflows";
-        }
-        returnURL += "/"+ myJobID;
-        return returnURL;
+    public String getJobURL(long myJobID, String templateType) {
+        return buildJobURL(this.url, this.apiBasePath, myJobID, templateType);
+    }
+
+    public String getProjectSyncURL(long syncID) {
+        return buildJobURL(this.url, this.apiBasePath, syncID, "project_update");
     }
 
     private String getBasicAuthString() {
@@ -1054,7 +1185,8 @@ public class TowerConnector implements Serializable {
     }
 
     private String getOAuthToken() throws AnsibleTowerException {
-        String tokenURI = url + this.buildEndpoint("/tokens/");
+        String tokenEndpoint = buildOAuthTokenEndpoint(this.apiBasePath);
+        String tokenURI = url + tokenEndpoint;
         HttpPost oauthTokenRequest = new HttpPost(tokenURI);
         oauthTokenRequest.setHeader(HttpHeaders.AUTHORIZATION, this.getBasicAuthString());
         JSONObject body = new JSONObject();
@@ -1100,6 +1232,7 @@ public class TowerConnector implements Serializable {
 
         if (responseObject.containsKey("id")) {
             this.oAuthTokenID = responseObject.getString("id");
+            this.oAuthTokenBaseEndpoint = tokenEndpoint;
         }
 
         if (responseObject.containsKey("token")) {
@@ -1166,7 +1299,11 @@ public class TowerConnector implements Serializable {
         if(this.oAuthTokenID != null) {
             logger.logMessage("Deleting oAuth token "+ this.oAuthTokenID +" for " + this.username);
             try {
-                String tokenURI = url + this.buildEndpoint("/tokens/" + this.oAuthTokenID + "/");
+                String tokenEndpoint = this.oAuthTokenBaseEndpoint;
+                if(tokenEndpoint == null) {
+                    tokenEndpoint = this.buildEndpoint("/tokens/");
+                }
+                String tokenURI = url + tokenEndpoint + this.oAuthTokenID + "/";
                 HttpDelete tokenRequest = new HttpDelete(tokenURI);
                 tokenRequest.setHeader(HttpHeaders.AUTHORIZATION, this.getBasicAuthString());
 
@@ -1181,6 +1318,7 @@ public class TowerConnector implements Serializable {
                 logger.logMessage("oAuth Token deleted");
 
                 this.oAuthTokenID = null;
+                this.oAuthTokenBaseEndpoint = null;
                 this.authorizationHeader = null;
             } catch(Exception e) {
                 logger.logMessage("Failed to delete token: "+ e.getMessage());

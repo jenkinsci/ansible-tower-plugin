@@ -11,6 +11,7 @@ import com.cloudbees.plugins.credentials.common.StandardListBoxModel;
 import com.cloudbees.plugins.credentials.common.UsernamePasswordCredentials;
 import com.cloudbees.plugins.credentials.common.StandardUsernamePasswordCredentials;
 import com.cloudbees.plugins.credentials.domains.DomainRequirement;
+
 import hudson.model.Run;
 import jenkins.model.Jenkins;
 import org.jenkinsci.plugins.plaincredentials.StringCredentials;
@@ -35,36 +36,70 @@ public class TowerInstallation extends AbstractDescribableImpl<TowerInstallation
 
     private final String towerDisplayName;
     private final String towerURL;
+    private String towerApiBasePath;
     private String towerCredentialsId;
     private final boolean towerTrustCert;
     private final boolean enableDebugging;
     private Run run;
 
     @DataBoundConstructor
-    public TowerInstallation(String towerDisplayName, String towerURL, String towerCredentialsId, boolean towerTrustCert, boolean enableDebugging) {
+    public TowerInstallation(String towerDisplayName, String towerURL, String towerApiBasePath, String towerCredentialsId, boolean towerTrustCert, boolean enableDebugging) {
         this.towerDisplayName = towerDisplayName;
         this.towerCredentialsId = towerCredentialsId;
         this.towerURL = towerURL;
+        this.towerApiBasePath = TowerConnector.normalizeApiBasePath(towerApiBasePath);
         this.towerTrustCert = towerTrustCert;
         this.enableDebugging = enableDebugging;
     }
 
-    public String getTowerDisplayName() { return this.towerDisplayName; }
-    public String getTowerURL() { return this.towerURL; }
-    public String getTowerCredentialsId() { return this.towerCredentialsId; }
-    public boolean getTowerTrustCert() { return this.towerTrustCert; }
-    public boolean getEnableDebugging() { return this.enableDebugging; }
+    public TowerInstallation(String towerDisplayName, String towerURL, String towerCredentialsId, boolean towerTrustCert, boolean enableDebugging) {
+        this(towerDisplayName, towerURL, TowerConnector.API_BASE_PATH_LEGACY, towerCredentialsId, towerTrustCert, enableDebugging);
+    }
 
-    public void setTowerCredentialsId(String towerCredentialsId) { this.towerCredentialsId = towerCredentialsId; }
-    public void setRun(Run run) { this.run = run; }
+    public String getTowerDisplayName() {
+        return this.towerDisplayName;
+    }
+
+    public String getTowerURL() {
+        return this.towerURL;
+    }
+
+    public String getTowerApiBasePath() {
+        return TowerConnector.normalizeApiBasePath(this.towerApiBasePath);
+    }
+
+    public String getTowerCredentialsId() {
+        return this.towerCredentialsId;
+    }
+
+    public boolean getTowerTrustCert() {
+        return this.towerTrustCert;
+    }
+
+    public boolean getEnableDebugging() {
+        return this.enableDebugging;
+    }
+
+    public void setTowerCredentialsId(String towerCredentialsId) {
+        this.towerCredentialsId = towerCredentialsId;
+    }
+
+    public void setRun(Run run) {
+        this.run = run;
+    }
 
     public TowerConnector getTowerConnector() {
         return TowerInstallation.getTowerConnectorStatic(this.towerURL, this.towerCredentialsId, this.towerTrustCert,
-                this.enableDebugging, this.run);
+                this.enableDebugging, this.run, this.getTowerApiBasePath());
     }
 
     public static TowerConnector getTowerConnectorStatic(String towerURL, String towerCredentialsId, boolean trustCert,
                                                          boolean enableDebugging, Run run) {
+        return getTowerConnectorStatic(towerURL, towerCredentialsId, trustCert, enableDebugging, run, TowerConnector.API_BASE_PATH_LEGACY);
+    }
+
+    public static TowerConnector getTowerConnectorStatic(String towerURL, String towerCredentialsId, boolean trustCert,
+                                                         boolean enableDebugging, Run run, String towerApiBasePath) {
         String username = null;
         String password = null;
         String oauth_token = null;
@@ -83,20 +118,16 @@ public class TowerInstallation extends AbstractDescribableImpl<TowerInstallation
                 }
             }
         }
-        TowerConnector testConnector = new TowerConnector(towerURL, username, password, oauth_token, trustCert, enableDebugging);
+        TowerConnector testConnector = new TowerConnector(towerURL, username, password, oauth_token, trustCert, enableDebugging, towerApiBasePath);
         return testConnector;
     }
-
+    
     private static <C extends Credentials> List<C> getCredsList(Class<C> type, Run run) {
         List<C> credsList;
 
-        if (run != null) {
-            try {
-                credsList = CredentialsProvider.lookupCredentials(type,
-                        run.getParent(), null, new DomainRequirement());
-            } catch (NullPointerException e) {
-                credsList = CredentialsProvider.lookupCredentials(type);
-            }
+        if (run != null && run.getParent() != null) {
+            credsList = CredentialsProvider.lookupCredentials(type,
+                    run.getParent(), null, new DomainRequirement());
         } else {
             credsList = CredentialsProvider.lookupCredentials(type);
         }
@@ -111,6 +142,7 @@ public class TowerInstallation extends AbstractDescribableImpl<TowerInstallation
         @POST
         public FormValidation doTestTowerConnection(
                 @QueryParameter("towerURL") final String towerURL,
+                @QueryParameter("towerApiBasePath") final String towerApiBasePath,
                 @QueryParameter("towerCredentialsId") final String towerCredentialsId,
                 @QueryParameter("towerTrustCert") final boolean towerTrustCert,
                 @QueryParameter("enableDebugging") final boolean enableDebugging
@@ -118,7 +150,7 @@ public class TowerInstallation extends AbstractDescribableImpl<TowerInstallation
             // Also, validate that we are an Administrator
             Jenkins.getInstance().checkPermission(Jenkins.ADMINISTER);
             TowerLogger.writeMessage("Starting to test connection with (" + towerURL + ") and (" + towerCredentialsId + ") and (" + towerTrustCert + ") with debugging (" + enableDebugging + ")");
-            TowerConnector testConnector = TowerInstallation.getTowerConnectorStatic(towerURL, towerCredentialsId, towerTrustCert, enableDebugging, null);
+            TowerConnector testConnector = TowerInstallation.getTowerConnectorStatic(towerURL, towerCredentialsId, towerTrustCert, enableDebugging, null, towerApiBasePath);
             try {
                 testConnector.testConnection();
                 return FormValidation.ok("Success");
@@ -141,11 +173,16 @@ public class TowerInstallation extends AbstractDescribableImpl<TowerInstallation
             );
         }
 
+        public ListBoxModel doFillTowerApiBasePathItems() {
+            ListBoxModel items = new ListBoxModel();
+            items.add("Tower/AWX Legacy (/api/v2)", TowerConnector.API_BASE_PATH_LEGACY);
+            items.add("AAP 2.5+ Controller (/api/controller/v2)", TowerConnector.API_BASE_PATH_AAP_CONTROLLER);
+            return items;
+        }
+
         @Override
         public String getDisplayName() {
             return "Tower Installation";
         }
     }
 }
-
-

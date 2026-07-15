@@ -20,7 +20,7 @@ import org.kohsuke.stapler.DataBoundSetter;
 import org.kohsuke.stapler.QueryParameter;
 import org.kohsuke.stapler.verb.POST;
 
-import javax.annotation.Nonnull;
+import edu.umd.cs.findbugs.annotations.NonNull;
 import java.io.IOException;
 import java.util.Properties;
 
@@ -29,17 +29,17 @@ import java.util.Properties;
  */
 public class AnsibleTowerProjectRevisionFreestyle extends Builder {
 
-	private @Nonnull String towerServer     = DescriptorImpl.towerServer;
+	private @NonNull String towerServer     = DescriptorImpl.towerServer;
 	private String towerCredentialsId       = "";
-	private @Nonnull String project         = DescriptorImpl.project;
+	private @NonNull String project         = DescriptorImpl.project;
 	private String revision                 = DescriptorImpl.revision;
     private Boolean verbose                 = DescriptorImpl.verbose;
 	private Boolean throwExceptionWhenFail  = true;
 
 	@DataBoundConstructor
 	public AnsibleTowerProjectRevisionFreestyle(
-			@Nonnull String towerServer, String towerCredentialsId,
-			@Nonnull String project, String revision,
+			@NonNull String towerServer, String towerCredentialsId,
+			@NonNull String project, String revision,
 			Boolean verbose, Boolean throwExceptionWhenFail
 	) {
 		this.towerServer = towerServer;
@@ -50,10 +50,10 @@ public class AnsibleTowerProjectRevisionFreestyle extends Builder {
 		this.throwExceptionWhenFail = throwExceptionWhenFail;
 	}
 
-	@Nonnull
+	@NonNull
 	public String getTowerServer() { return towerServer; }
 	public String getTowerCredentialsId() { return towerCredentialsId; }
-	@Nonnull
+	@NonNull
 	public String getProject() { return project; }
 	public String getRevision() { return revision; }
 	public Boolean getVerbose() { return verbose; }

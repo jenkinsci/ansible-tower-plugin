@@ -22,7 +22,7 @@ import org.kohsuke.stapler.DataBoundSetter;
 import org.kohsuke.stapler.QueryParameter;
 import org.kohsuke.stapler.verb.POST;
 
-import javax.annotation.Nonnull;
+import edu.umd.cs.findbugs.annotations.NonNull;
 import java.util.Properties;
 
 public class AnsibleTowerStep extends AbstractStepImpl {
@@ -49,7 +49,7 @@ public class AnsibleTowerStep extends AbstractStepImpl {
     /* This dericated function will remain here in order for any thing calling our plugin to remain functional */
     @Deprecated
     public AnsibleTowerStep(
-            @Nonnull String towerServer, @Nonnull String towerCredentialsId, @Nonnull String jobTemplate, String jobType, String extraVars, String jobTags,
+            @NonNull String towerServer, @NonNull String towerCredentialsId, @NonNull String jobTemplate, String jobType, String extraVars, String jobTags,
             String skipJobTags, String limit, String inventory, String credential, String scmBranch, Boolean verbose,
             Boolean importTowerLogs, Boolean removeColor, String templateType, Boolean importWorkflowChildLogs,
             Boolean throwExceptionWhenFail, Boolean async
@@ -79,7 +79,7 @@ public class AnsibleTowerStep extends AbstractStepImpl {
     /** @since 0.16.0 */
     @DataBoundConstructor
     public AnsibleTowerStep(
-            @Nonnull String towerServer, @Nonnull String towerCredentialsId, @Nonnull String jobTemplate, String jobType
+            @NonNull String towerServer, @NonNull String towerCredentialsId, @NonNull String jobTemplate, String jobType
     ) {
         this.towerServer = towerServer;
         this.towerCredentialsId = towerCredentialsId;
@@ -87,9 +87,9 @@ public class AnsibleTowerStep extends AbstractStepImpl {
         this.jobType = jobType;
     }
 
-    @Nonnull
+    @NonNull
     public String getTowerServer()              { return towerServer; }
-    @Nonnull
+    @NonNull
     public String getJobTemplate()              { return jobTemplate; }
     public String getTowerCredentialsId()       { return towerCredentialsId; }
     public String getExtraVars()                { return extraVars; }
@@ -311,4 +311,3 @@ public class AnsibleTowerStep extends AbstractStepImpl {
         }
     }
 }
-
