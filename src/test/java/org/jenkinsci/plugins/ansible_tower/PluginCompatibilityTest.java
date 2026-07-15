@@ -12,17 +12,15 @@ import org.apache.http.client.HttpClient;
 import org.jenkinsci.plugins.ansible_tower.util.TowerConnector;
 import org.jenkinsci.plugins.ansible_tower.util.TowerInstallation;
 import org.jenkinsci.plugins.workflow.steps.StepDescriptor;
-import org.junit.Rule;
-import org.junit.Test;
+import org.junit.jupiter.api.Test;
 import org.jvnet.hudson.test.JenkinsRule;
+import org.jvnet.hudson.test.junit.jupiter.WithJenkins;
 
+@WithJenkins
 public class PluginCompatibilityTest {
 
-    @Rule
-    public JenkinsRule jenkinsRule = new JenkinsRule();
-
     @Test
-    public void pluginLoadsDescriptorsAndHttpClientFromApiPlugin() throws Exception {
+    public void pluginLoadsDescriptorsAndHttpClientFromApiPlugin(JenkinsRule jenkinsRule) throws Exception {
         assertThat(jenkinsRule.jenkins.getPluginManager().getPlugin("ansible-tower"), notNullValue());
         assertThat(jenkinsRule.jenkins.getPluginManager().getPlugin("apache-httpcomponents-client-4-api"), notNullValue());
         assertThat(Jenkins.get().getDescriptor(AnsibleTower.class), instanceOf(AnsibleTower.DescriptorImpl.class));
@@ -42,7 +40,7 @@ public class PluginCompatibilityTest {
     }
 
     @Test
-    public void pipelineStepsRetainDataBoundValues() {
+    public void pipelineStepsRetainDataBoundValues(JenkinsRule jenkinsRule) {
         AnsibleTowerStep job = new AnsibleTowerStep("tower", "credential", "template", "check");
         job.setExtraVars("{\"key\":\"value\"}");
         job.setTowerLogLevel("full");
@@ -69,7 +67,7 @@ public class PluginCompatibilityTest {
     }
 
     @Test
-    public void freestyleConfigurationAndGlobalInstallationRoundTrip() throws Exception {
+    public void freestyleConfigurationAndGlobalInstallationRoundTrip(JenkinsRule jenkinsRule) throws Exception {
         TowerInstallation installation = new TowerInstallation(
                 "tower", "https://tower.example.com", "/api/controller/v2", "credential", true, true);
         AnsibleTowerGlobalConfig.get().setTowerInstallation(List.of(installation));

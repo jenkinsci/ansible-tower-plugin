@@ -21,7 +21,6 @@ import hudson.model.Descriptor;
 import hudson.model.Project;
 import hudson.util.FormValidation;
 import hudson.util.ListBoxModel;
-import org.apache.commons.lang.StringUtils;
 import org.kohsuke.stapler.AncestorInPath;
 import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.QueryParameter;
@@ -103,7 +102,7 @@ public class TowerInstallation extends AbstractDescribableImpl<TowerInstallation
         String username = null;
         String password = null;
         String oauth_token = null;
-        if (StringUtils.isNotBlank(towerCredentialsId)) {
+        if (towerCredentialsId != null && !towerCredentialsId.trim().isEmpty()) {
             List<StandardUsernamePasswordCredentials> credsList = getCredsList(StandardUsernamePasswordCredentials.class, run);
             for (StandardUsernamePasswordCredentials creds : credsList) {
                 if (creds.getId().equals(towerCredentialsId)) {
