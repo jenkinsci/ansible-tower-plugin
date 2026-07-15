@@ -20,7 +20,7 @@ import org.kohsuke.stapler.DataBoundSetter;
 import org.kohsuke.stapler.QueryParameter;
 import org.kohsuke.stapler.verb.POST;
 
-import javax.annotation.Nonnull;
+import edu.umd.cs.findbugs.annotations.NonNull;
 import java.io.IOException;
 import java.util.Properties;
 
@@ -31,16 +31,16 @@ import static com.cloudbees.plugins.credentials.CredentialsMatchers.instanceOf;
  */
 public class AnsibleTowerProjectSyncFreestyle extends Builder {
 
-	private @Nonnull String towerServer     = DescriptorImpl.towerServer;
+	private @NonNull String towerServer     = DescriptorImpl.towerServer;
 	private String towerCredentialsId       = "";
-	private @Nonnull String project         = DescriptorImpl.project;
+	private @NonNull String project         = DescriptorImpl.project;
     private Boolean verbose                 = DescriptorImpl.verbose;
     private Boolean importTowerLogs			= DescriptorImpl.importTowerLogs;
     private Boolean removeColor				= DescriptorImpl.removeColor;
 
 	@DataBoundConstructor
 	public AnsibleTowerProjectSyncFreestyle(
-			@Nonnull String towerServer, String towerCredentialsId, @Nonnull String project, Boolean verbose,
+			@NonNull String towerServer, String towerCredentialsId, @NonNull String project, Boolean verbose,
 			Boolean importTowerLogs, Boolean removeColor
 	) {
 		this.towerServer = towerServer;
@@ -51,10 +51,10 @@ public class AnsibleTowerProjectSyncFreestyle extends Builder {
 		this.removeColor = removeColor;
 	}
 
-	@Nonnull
+	@NonNull
 	public String getTowerServer() { return towerServer; }
 	public String getTowerCredentialsId() { return towerCredentialsId; }
-	@Nonnull
+	@NonNull
 	public String getProject() { return project; }
 	public Boolean getVerbose() { return verbose; }
 	public Boolean getImportTowerLogs() { return importTowerLogs; }

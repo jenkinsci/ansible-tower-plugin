@@ -47,13 +47,19 @@ public class TowerConnector implements Serializable {
     public static final int PATCH = 3;
     public static final String JOB_TEMPLATE_TYPE = "job";
     public static final String WORKFLOW_TEMPLATE_TYPE = "workflow";
+    public static final String API_BASE_PATH_LEGACY = "/api/v2";
+    public static final String API_BASE_PATH_AAP_CONTROLLER = "/api/controller/v2";
+    public static final String API_GATEWAY_TOKEN_ENDPOINT = "/api/gateway/v1/tokens/";
     private static final String ARTIFACTS = "artifacts";
-    private static String API_VERSION = "v2";
+    private static final int MAX_TRANSIENT_GATEWAY_RETRIES = 5;
+    private static final long TRANSIENT_GATEWAY_RETRY_DELAY_MS = 10000L;
 
     private String authorizationHeader = null;
     private String oauthToken = null;
     private String oAuthTokenID = null;
+    private String oAuthTokenBaseEndpoint = null;
     private String url = null;
+    private String apiBasePath = API_BASE_PATH_LEGACY;
     private String username = null;
     private String password = null;
     private TowerVersion towerVersion = null;
@@ -70,11 +76,12 @@ public class TowerConnector implements Serializable {
     public TowerConnector(String url, String username, String password) { this(url, username, password, null, false, false); }
 
     public TowerConnector(String url, String username, String password, String oauthToken, Boolean trustAllCerts, Boolean debug) {
-        // Credit to https://stackoverflow.com/questions/7438612/how-to-remove-the-last-character-from-a-string
-        if(url != null && url.length() > 0 && url.charAt(url.length() - 1) == '/') {
-            url = url.substring(0, (url.length() - 1));
-        }
-        this.url = url;
+        this(url, username, password, oauthToken, trustAllCerts, debug, API_BASE_PATH_LEGACY);
+    }
+
+    public TowerConnector(String url, String username, String password, String oauthToken, Boolean trustAllCerts, Boolean debug, String apiBasePath) {
+        this.url = normalizeBaseURL(url);
+        this.apiBasePath = normalizeApiBasePath(apiBasePath);
         this.username = username;
         this.password = password;
         this.oauthToken = oauthToken;
@@ -99,6 +106,30 @@ public class TowerConnector implements Serializable {
     public void setGetWorkflowChildLogs(boolean importChildWorkflowLogs) { this.importChildWorkflowLogs = importChildWorkflowLogs; }
     public void setGetFullLogs(boolean getFullLogs) { this.getFullLogs = getFullLogs; }
     public HashMap<String, String> getJenkinsExports() { return jenkinsExports; }
+
+    static String normalizeBaseURL(String baseURL) {
+        if(baseURL != null) {
+            baseURL = baseURL.trim();
+            if(baseURL.length() > 0 && baseURL.charAt(baseURL.length() - 1) == '/') {
+                baseURL = baseURL.substring(0, (baseURL.length() - 1));
+            }
+        }
+        return baseURL;
+    }
+
+    static String normalizeApiBasePath(String apiBasePath) {
+        if(apiBasePath == null || apiBasePath.trim().isEmpty()) {
+            return API_BASE_PATH_LEGACY;
+        }
+        apiBasePath = apiBasePath.trim();
+        if(!apiBasePath.startsWith("/")) {
+            apiBasePath = "/" + apiBasePath;
+        }
+        if(apiBasePath.endsWith("/")) {
+            apiBasePath = apiBasePath.substring(0, apiBasePath.length() - 1);
+        }
+        return apiBasePath;
+    }
 
     private DefaultHttpClient getHttpClient() throws AnsibleTowerException {
         URI myURI = null;
@@ -136,12 +167,67 @@ public class TowerConnector implements Serializable {
     }
 
     private String buildEndpoint(String endpoint) {
+        return buildEndpoint(endpoint, this.apiBasePath);
+    }
+
+    static String buildEndpoint(String endpoint, String apiBasePath) {
         if(endpoint.startsWith("/api/")) { return endpoint; }
 
-        String full_endpoint = "/api/"+ API_VERSION;
+        String full_endpoint = normalizeApiBasePath(apiBasePath);
         if(!endpoint.startsWith("/")) { full_endpoint += "/"; }
         full_endpoint += endpoint;
         return full_endpoint;
+    }
+
+    static String buildOAuthTokenEndpoint(String apiBasePath) {
+        if(API_BASE_PATH_AAP_CONTROLLER.equals(normalizeApiBasePath(apiBasePath))) {
+            return API_GATEWAY_TOKEN_ENDPOINT;
+        }
+        return buildEndpoint("/tokens/", apiBasePath);
+    }
+
+    static boolean isAAPControllerMode(String apiBasePath) {
+        return API_BASE_PATH_AAP_CONTROLLER.equals(normalizeApiBasePath(apiBasePath));
+    }
+
+    static boolean shouldProbeOAuthSupport(String apiBasePath) {
+        return !isAAPControllerMode(apiBasePath);
+    }
+
+    static String buildJobURL(String uiBaseURL, String apiBasePath, long jobID, String jobType) {
+        uiBaseURL = normalizeBaseURL(uiBaseURL);
+        jobType = normalizeJobType(jobType);
+
+        if(isAAPControllerMode(apiBasePath)) {
+            if("workflow_job".equals(jobType)) {
+                return uiBaseURL + "/execution/jobs/workflow/" + jobID + "/output";
+            } else if("project_update".equals(jobType)) {
+                return uiBaseURL + "/execution/jobs/project_update/" + jobID + "/output";
+            } else if("inventory_update".equals(jobType)) {
+                return uiBaseURL + "/execution/jobs/inventory_update/" + jobID + "/output";
+            }
+            return uiBaseURL + "/execution/jobs/playbook/" + jobID + "/output";
+        }
+
+        if("workflow_job".equals(jobType)) {
+            return uiBaseURL + "/#/jobs/workflow/" + jobID;
+        } else if("project_update".equals(jobType)) {
+            return uiBaseURL + "/#/jobs/project/" + jobID;
+        } else if("inventory_update".equals(jobType)) {
+            return uiBaseURL + "/#/jobs/inventory/" + jobID;
+        }
+        return uiBaseURL + "/#/jobs/" + jobID;
+    }
+
+    private static String normalizeJobType(String jobType) {
+        if(jobType == null || jobType.trim().isEmpty()) {
+            return JOB_TEMPLATE_TYPE;
+        }
+        jobType = jobType.trim().toLowerCase();
+        if(WORKFLOW_TEMPLATE_TYPE.equals(jobType)) {
+            return "workflow_job";
+        }
+        return jobType;
     }
 
     private HttpResponse makeRequest(int requestType, String endpoint) throws AnsibleTowerException {
@@ -200,8 +286,8 @@ public class TowerConnector implements Serializable {
                 } else if(this.username != null && this.password != null) {
                     // Second, if we have a username and a password we can try to go get a token
 
-                    // For trying to get a token, we will first attempt to self create an oAuthToken if Tower supports it
-                    if (this.towerSupports("/api/o/")) {
+                    // AAP controller mode uses the gateway token endpoint directly. Legacy Tower/AWX still probes /api/o/.
+                    if (!shouldProbeOAuthSupport(this.apiBasePath) || this.towerSupports("/api/o/")) {
                         logger.logMessage("Getting an oAuth token for "+ this.username);
                         try {
                             this.authorizationHeader = "Bearer " + this.getOAuthToken();
@@ -211,7 +297,7 @@ public class TowerConnector implements Serializable {
                     }
 
                     // Second, we will try to get a legacy authtoken if Tower supports if
-                    if(this.authorizationHeader == null && this.towerSupports("/api/v2/authtoken")) {
+                    if(this.authorizationHeader == null && this.towerSupports(this.buildEndpoint("/authtoken/"))) {
                         logger.logMessage("Getting a legacy token for " + this.username);
                         try {
                             this.authorizationHeader = "Token " + this.getAuthToken();
@@ -683,6 +769,28 @@ public class TowerConnector implements Serializable {
         if(templateType.equalsIgnoreCase(WORKFLOW_TEMPLATE_TYPE)) { apiEndpoint = "/workflow_jobs/"+ jobID +"/"; }
         HttpResponse response = makeRequest(GET, apiEndpoint);
 
+        int retryCount = 0;
+        while(isTransientGatewayStatus(response.getStatusLine().getStatusCode())
+                && retryCount < MAX_TRANSIENT_GATEWAY_RETRIES) {
+            retryCount++;
+            int statusCode = response.getStatusLine().getStatusCode();
+            logger.logMessage("Job status poll failed: jobID=" + jobID
+                + ", templateType=" + templateType
+                + ", endpoint=" + buildEndpoint(apiEndpoint)
+                + ", httpStatus=" + statusCode
+                + ", retry=" + retryCount + "/" + MAX_TRANSIENT_GATEWAY_RETRIES
+                + ", retryDelaySeconds=" + (TRANSIENT_GATEWAY_RETRY_DELAY_MS / 1000L));
+            EntityUtils.consumeQuietly(response.getEntity());
+            try {
+                Thread.sleep(TRANSIENT_GATEWAY_RETRY_DELAY_MS);
+            } catch(InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                throw new AnsibleTowerException("Interrupted while retrying job status request after HTTP "
+                    + statusCode + " for job " + jobID);
+            }
+            response = makeRequest(GET, apiEndpoint);
+        }
+
         if(response.getStatusLine().getStatusCode() == 200) {
             JSONObject responseObject;
             String json;
@@ -723,6 +831,10 @@ public class TowerConnector implements Serializable {
         } else {
             throw new AnsibleTowerException("Unexpected error code returned (" + response.getStatusLine().getStatusCode() + ")");
         }
+    }
+
+    static boolean isTransientGatewayStatus(int statusCode) {
+        return statusCode == 502 || statusCode == 503 || statusCode == 504;
     }
 
     public void cancelJob(long jobID, String templateType) throws AnsibleTowerException {
@@ -815,7 +927,29 @@ public class TowerConnector implements Serializable {
     private Vector<String> logWorkflowEvents(long jobID, boolean importWorkflowChildLogs) throws AnsibleTowerException {
         Vector<String> events = new Vector<String>();
         if(!this.logIdForWorkflows.containsKey(jobID)) { this.logIdForWorkflows.put(jobID, 0L); }
-        HttpResponse response = makeRequest(GET, "/workflow_jobs/"+ jobID +"/workflow_nodes/?id__gt="+this.logIdForWorkflows.get(jobID));
+        String apiEndpoint = "/workflow_jobs/"+ jobID +"/workflow_nodes/?id__gt="+this.logIdForWorkflows.get(jobID);
+        HttpResponse response = makeRequest(GET, apiEndpoint);
+
+        int retryCount = 0;
+        while(isTransientGatewayStatus(response.getStatusLine().getStatusCode())
+                && retryCount < MAX_TRANSIENT_GATEWAY_RETRIES) {
+            retryCount++;
+            int statusCode = response.getStatusLine().getStatusCode();
+            logger.logMessage("Workflow events poll failed: jobID=" + jobID
+                + ", endpoint=" + buildEndpoint(apiEndpoint)
+                + ", httpStatus=" + statusCode
+                + ", retry=" + retryCount + "/" + MAX_TRANSIENT_GATEWAY_RETRIES
+                + ", retryDelaySeconds=" + (TRANSIENT_GATEWAY_RETRY_DELAY_MS / 1000L));
+            EntityUtils.consumeQuietly(response.getEntity());
+            try {
+                Thread.sleep(TRANSIENT_GATEWAY_RETRY_DELAY_MS);
+            } catch(InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                throw new AnsibleTowerException("Interrupted while retrying workflow events request after HTTP "
+                    + statusCode + " for job " + jobID);
+            }
+            response = makeRequest(GET, apiEndpoint);
+        }
 
         if(response.getStatusLine().getStatusCode() == 200) {
             JSONObject responseObject;
@@ -859,7 +993,7 @@ public class TowerConnector implements Serializable {
                     }
 
                     if(eventId > this.logIdForWorkflows.get(jobID)) { this.logIdForWorkflows.put(jobID, eventId); }
-                    events.addAll(logLine(job.getString("name") +" => "+ job.getString("status") +" "+ this.getJobURL(job.getLong("id"), JOB_TEMPLATE_TYPE)));
+                    events.addAll(logLine(job.getString("name") +" => "+ job.getString("status") +" "+ this.getJobURL(job.getLong("id"), templateType.getString(UNIFIED_JOB_TYPE))));
 
                     if(importWorkflowChildLogs) {
                         if(templateType.getString(UNIFIED_JOB_TYPE).equalsIgnoreCase("job")) {
@@ -1044,14 +1178,11 @@ public class TowerConnector implements Serializable {
     }
 
     public String getJobURL(long myJobID, String templateType) {
-        String returnURL = url +"/#/";
-        if (templateType.equalsIgnoreCase(TowerConnector.JOB_TEMPLATE_TYPE)) {
-            returnURL += "jobs";
-        } else {
-            returnURL += "workflows";
-        }
-        returnURL += "/"+ myJobID;
-        return returnURL;
+        return buildJobURL(this.url, this.apiBasePath, myJobID, templateType);
+    }
+
+    public String getProjectSyncURL(long syncID) {
+        return buildJobURL(this.url, this.apiBasePath, syncID, "project_update");
     }
 
     private String getBasicAuthString() {
@@ -1061,7 +1192,8 @@ public class TowerConnector implements Serializable {
     }
 
     private String getOAuthToken() throws AnsibleTowerException {
-        String tokenURI = url + this.buildEndpoint("/tokens/");
+        String tokenEndpoint = buildOAuthTokenEndpoint(this.apiBasePath);
+        String tokenURI = url + tokenEndpoint;
         HttpPost oauthTokenRequest = new HttpPost(tokenURI);
         oauthTokenRequest.setHeader(HttpHeaders.AUTHORIZATION, this.getBasicAuthString());
         JSONObject body = new JSONObject();
@@ -1107,6 +1239,7 @@ public class TowerConnector implements Serializable {
 
         if (responseObject.containsKey("id")) {
             this.oAuthTokenID = responseObject.getString("id");
+            this.oAuthTokenBaseEndpoint = tokenEndpoint;
         }
 
         if (responseObject.containsKey("token")) {
@@ -1173,7 +1306,11 @@ public class TowerConnector implements Serializable {
         if(this.oAuthTokenID != null) {
             logger.logMessage("Deleting oAuth token "+ this.oAuthTokenID +" for " + this.username);
             try {
-                String tokenURI = url + this.buildEndpoint("/tokens/" + this.oAuthTokenID + "/");
+                String tokenEndpoint = this.oAuthTokenBaseEndpoint;
+                if(tokenEndpoint == null) {
+                    tokenEndpoint = this.buildEndpoint("/tokens/");
+                }
+                String tokenURI = url + tokenEndpoint + this.oAuthTokenID + "/";
                 HttpDelete tokenRequest = new HttpDelete(tokenURI);
                 tokenRequest.setHeader(HttpHeaders.AUTHORIZATION, this.getBasicAuthString());
 
@@ -1188,6 +1325,7 @@ public class TowerConnector implements Serializable {
                 logger.logMessage("oAuth Token deleted");
 
                 this.oAuthTokenID = null;
+                this.oAuthTokenBaseEndpoint = null;
                 this.authorizationHeader = null;
             } catch(Exception e) {
                 logger.logMessage("Failed to delete token: "+ e.getMessage());

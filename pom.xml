@@ -4,13 +4,13 @@
     <parent>
         <groupId>org.jenkins-ci.plugins</groupId>
         <artifactId>plugin</artifactId>
-        <version>4.51</version>
+        <version>6.2211.v27f680c93c53</version>
         <relativePath />
     </parent>
 
     <groupId>org.jenkins-ci.plugins</groupId>
     <artifactId>ansible-tower</artifactId>
-    <version>0.17.1-SNAPSHOT</version>
+    <version>${changelist}</version>
     <packaging>hpi</packaging>
     <name>Ansible Tower Plugin</name>
     <description>
@@ -34,15 +34,17 @@
 
     <scm>
         <connection>scm:git:ssh://github.com/jenkinsci/ansible-tower-plugin.git</connection>
-        <developerConnection>scm:git:ssh://git@github.com/jenkinsci/ansible-tower-plugin.git</developerConnection>
+        <developerConnection>scm:git:git@github.com:jenkinsci/ansible-tower-plugin.git</developerConnection>
         <url>https://github.com/jenkinsci/ansible-tower-plugin</url>
-        <tag>ansible-tower-0.17.0</tag>
+        <tag>${scmTag}</tag>
     </scm>
 
     <properties>
+        <revision>0.18.1</revision>
+        <changelist>999999-SNAPSHOT</changelist>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <jenkins.version>2.346.3</jenkins.version>
-        <java.level>8</java.level>
+        <jenkins.version>2.555.1</jenkins.version>
+        <maven.compiler.release>21</maven.compiler.release>
     </properties>
 
     <repositories>
@@ -65,38 +67,21 @@
                 <groupId>org.jenkins-ci.tools</groupId>
                 <artifactId>maven-hpi-plugin</artifactId>
                 <configuration>
+                    <disabledTestInjection>true</disabledTestInjection>
                     <pluginFirstClassLoader>true</pluginFirstClassLoader>
                 </configuration>
             </plugin>
-            <plugin>
-                <artifactId>maven-compiler-plugin</artifactId>
-                <configuration>
-                    <source>1.8</source>
-                    <target>1.8</target>
-                    <encoding>${project.build.sourceEncoding}</encoding>
-                    <showDeprecation>true</showDeprecation>
-                    <compilerArgs>
-                        <compilerArg>-Xlint:all,-serial,-processing</compilerArg>
-                    </compilerArgs>
-                </configuration>
-            </plugin>
-
-            <!-- This is for my own testing !-->
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-surefire-plugin</artifactId>
-                <version>2.19</version>
-            </plugin>
-
         </plugins>
     </build>
 
     <dependencyManagement>
         <dependencies>
             <dependency>
-                <groupId>org.jenkins-ci</groupId>
-                <artifactId>symbol-annotation</artifactId>
-                <version>1.19</version>
+                <groupId>io.jenkins.tools.bom</groupId>
+                <artifactId>bom-2.555.x</artifactId>
+                <version>6687.v4253d9799d33</version>
+                <scope>import</scope>
+                <type>pom</type>
             </dependency>
         </dependencies>
     </dependencyManagement>
@@ -105,24 +90,20 @@
         <dependency>
             <groupId>org.jenkins-ci.plugins</groupId>
             <artifactId>credentials</artifactId>
-            <version>2.3.0</version>
         </dependency>
         <dependency>
             <groupId>org.jenkins-ci.plugins</groupId>
             <artifactId>script-security</artifactId>
-            <version>1.67</version>
         </dependency>
         <dependency>
             <groupId>org.jenkins-ci.plugins.workflow</groupId>
             <artifactId>workflow-step-api</artifactId>
-            <version>2.20</version>
             <optional>true</optional>
         </dependency>
         <!-- We are going to use plaincredentials to store the OAuthToken (at least for now) -->
         <dependency>
             <groupId>org.jenkins-ci.plugins</groupId>
             <artifactId>plain-credentials</artifactId>
-            <version>1.4</version>
             <optional>true</optional>
         </dependency>
         <dependency>
@@ -135,13 +116,13 @@
         <dependency>
             <groupId>commons-codec</groupId>
             <artifactId>commons-codec</artifactId>
-            <version>1.13</version>
+            <version>1.22.0</version>
         </dependency>
         <!-- https://mvnrepository.com/artifact/org.apache.httpcomponents/httpclient -->
         <dependency>
             <groupId>org.apache.httpcomponents</groupId>
             <artifactId>httpclient</artifactId>
-            <version>4.5.10</version>
+            <version>4.5.14</version>
         </dependency>
     </dependencies>
 
