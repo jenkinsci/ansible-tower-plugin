@@ -15,8 +15,6 @@ import org.jenkinsci.plugins.ansible_tower.exceptions.AnsibleTowerException;
 import org.jenkinsci.plugins.ansible_tower.util.*;
 import org.jenkinsci.plugins.envinject.service.EnvInjectActionSetter;
 
-import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
-
 import java.io.PrintStream;
 import java.util.*;
 
@@ -34,7 +32,6 @@ public class AnsibleTowerRunner {
                 templateType, importWorkflowChildLogs, ws, run, towerResults, false);
     }
     
-    @SuppressFBWarnings("DCN_NULLPOINTER_EXCEPTION")
     public boolean runJobTemplate(
             PrintStream logger, String towerServer, String towerCredentialsId, String jobTemplate, String jobType,
             String extraVars, String limit, String jobTags, String skipJobTags, String inventory, String credential, String scmBranch,

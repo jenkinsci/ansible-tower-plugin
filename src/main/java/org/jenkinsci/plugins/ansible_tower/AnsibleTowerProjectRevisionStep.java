@@ -24,7 +24,7 @@ import org.kohsuke.stapler.DataBoundSetter;
 import org.kohsuke.stapler.QueryParameter;
 import org.kohsuke.stapler.verb.POST;
 
-import javax.annotation.Nonnull;
+import edu.umd.cs.findbugs.annotations.NonNull;
 import java.util.Properties;
 
 public class AnsibleTowerProjectRevisionStep extends AbstractStepImpl {
@@ -37,8 +37,8 @@ public class AnsibleTowerProjectRevisionStep extends AbstractStepImpl {
 
     @DataBoundConstructor
     public AnsibleTowerProjectRevisionStep(
-            @Nonnull String towerServer, @Nonnull String towerCredentialsId,
-            @Nonnull String project, String revision,
+            @NonNull String towerServer, @NonNull String towerCredentialsId,
+            @NonNull String project, String revision,
             Boolean verbose, Boolean throwExceptionWhenFail
     ) {
         this.towerServer = towerServer;
@@ -49,10 +49,10 @@ public class AnsibleTowerProjectRevisionStep extends AbstractStepImpl {
         this.throwExceptionWhenFail = throwExceptionWhenFail;
     }
 
-    @Nonnull
+    @NonNull
     public String getTowerServer()              { return towerServer; }
     public String getTowerCredentialsId()       { return towerCredentialsId; }
-    @Nonnull
+    @NonNull
     public String getProject()                  { return project; }
     public String getRevision()                  { return revision; }
     public Boolean getVerbose()                 { return verbose; }
@@ -168,4 +168,3 @@ public class AnsibleTowerProjectRevisionStep extends AbstractStepImpl {
         }
     }
 }
-
