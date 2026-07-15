@@ -51,6 +51,8 @@ public class TowerConnector implements Serializable {
     public static final String API_BASE_PATH_AAP_CONTROLLER = "/api/controller/v2";
     public static final String API_GATEWAY_TOKEN_ENDPOINT = "/api/gateway/v1/tokens/";
     private static final String ARTIFACTS = "artifacts";
+    private static final int MAX_JOB_STATUS_RETRIES = 5;
+    private static final long JOB_STATUS_RETRY_DELAY_MS = 10000L;
 
     private String authorizationHeader = null;
     private String oauthToken = null;
@@ -767,6 +769,28 @@ public class TowerConnector implements Serializable {
         if(templateType.equalsIgnoreCase(WORKFLOW_TEMPLATE_TYPE)) { apiEndpoint = "/workflow_jobs/"+ jobID +"/"; }
         HttpResponse response = makeRequest(GET, apiEndpoint);
 
+        int retryCount = 0;
+        while(isTransientGatewayStatus(response.getStatusLine().getStatusCode())
+                && retryCount < MAX_JOB_STATUS_RETRIES) {
+            retryCount++;
+            int statusCode = response.getStatusLine().getStatusCode();
+            logger.logMessage("Job status poll failed: jobID=" + jobID
+                + ", templateType=" + templateType
+                + ", endpoint=" + buildEndpoint(apiEndpoint)
+                + ", httpStatus=" + statusCode
+                + ", retry=" + retryCount + "/" + MAX_JOB_STATUS_RETRIES
+                + ", retryDelaySeconds=" + (JOB_STATUS_RETRY_DELAY_MS / 1000L));
+            EntityUtils.consumeQuietly(response.getEntity());
+            try {
+                Thread.sleep(JOB_STATUS_RETRY_DELAY_MS);
+            } catch(InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                throw new AnsibleTowerException("Interrupted while retrying job status request after HTTP "
+                    + statusCode + " for job " + jobID);
+            }
+            response = makeRequest(GET, apiEndpoint);
+        }
+
         if(response.getStatusLine().getStatusCode() == 200) {
             JSONObject responseObject;
             String json;
@@ -807,6 +831,10 @@ public class TowerConnector implements Serializable {
         } else {
             throw new AnsibleTowerException("Unexpected error code returned (" + response.getStatusLine().getStatusCode() + ")");
         }
+    }
+
+    static boolean isTransientGatewayStatus(int statusCode) {
+        return statusCode == 502 || statusCode == 503 || statusCode == 504;
     }
 
     public void cancelJob(long jobID, String templateType) throws AnsibleTowerException {
