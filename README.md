@@ -13,7 +13,7 @@ This plugin connects Jenkins to [Ansible Tower](http://www.ansible.com/) to do t
 
 ## Requirements
 
-* Jenkins 2.555.1 or newer
+* Jenkins 2.479.1 or newer
 * Java 21 or newer to run Jenkins and this plugin
 * JDK 21 and Maven 3.9.6 or newer to build the plugin locally
 
