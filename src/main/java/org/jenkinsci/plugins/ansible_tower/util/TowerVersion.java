@@ -3,8 +3,11 @@ package org.jenkinsci.plugins.ansible_tower.util;
 import org.jenkinsci.plugins.ansible_tower.exceptions.AnsibleTowerException;
 
 import java.io.Serializable;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 public class TowerVersion implements Serializable {
+    private static final Logger LOGGER = Logger.getLogger(TowerVersion.class.getName());
     private int major = 0;
     private int minor = 0;
     private int point = 0;
@@ -15,7 +18,7 @@ public class TowerVersion implements Serializable {
         String[] parts = version.split("\\.");
         // AWX v8.0.0 has 4 parts as in: 8.0.0.0 so instead of != 3 we should be able to do < 3 and get the same results
         if(parts.length < 3) {
-            System.out.println("Got "+ parts.length +" segments");
+            LOGGER.log(Level.FINE, "Tower version has {0} segments", parts.length);
             throw new AnsibleTowerException("The version passed to TowerVersion must be in the format X.Y.Z");
         }
         try {

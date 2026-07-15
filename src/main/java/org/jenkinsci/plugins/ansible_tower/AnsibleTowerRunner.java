@@ -218,70 +218,31 @@ public class AnsibleTowerRunner {
 
         if (async) {
             towerResults.put("job", this.myJob);
+            towerResults.put("LOG_IMPORT_RESULT", JobPollingCoordinator.LOG_IMPORT_DEFERRED);
             myTowerConnection.releaseToken();
             return true;
         }
 
-        boolean jobCompleted = false;
-        // Assume the old logging behaviour (truncated logs) but we we are doing full logging or var logging then swtich to true
+        // Preserve the existing full/vars event parsing behavior.
         if (importTowerLogs.matches("full") || importTowerLogs.matches("vars")) {
             myTowerConnection.setGetFullLogs(true);
         }
-        while (!jobCompleted) {
-            if (Thread.currentThread().isInterrupted()) {
-                myTowerConnection.releaseToken();
-                return this.cancelJob(logger);
-            }
-
-            // First log any events if the user wants them
-            try {
-                this.getJobLogs(importTowerLogs, logger);
-            } catch (AnsibleTowerException e) {
-                logger.println("ERROR: Failed to get job events from tower: " + e.getMessage());
-                myTowerConnection.releaseToken();
-                return false;
-            }
-
-            try {
-                jobCompleted = this.myJob.isComplete();
-            } catch (AnsibleTowerException e) {
-                logger.println("ERROR: Failed to get job status from Tower: " + e.getMessage());
-                myTowerConnection.releaseToken();
-                return false;
-            }
-            if (!jobCompleted) {
-                if (Thread.currentThread().isInterrupted()) {
-                    myTowerConnection.releaseToken();
-                    return this.cancelJob(logger);
-                } else {
-                    try {
-                        Thread.sleep(3000);
-                    } catch (InterruptedException ie) {
-                        myTowerConnection.releaseToken();
-                        return this.cancelJob(logger);
-                    }
-                }
-            }
-        }
-        // One final log of events (if we want them)
-        // Note, that a job can complete long before Tower has finished consuming the logs. This can cause incomplete
-        //    logs within Jenkins.
+        JobPollingCoordinator.Result pollingResult;
         try {
-            this.getJobLogs(importTowerLogs, logger);
+            pollingResult = new JobPollingCoordinator(this.myJob, logger, importTowerLogs)
+                .waitForCompletion();
+        } catch (InterruptedException interrupted) {
+            boolean result = this.cancelJob(logger);
+            Thread.currentThread().interrupt();
+            return result;
         } catch (AnsibleTowerException e) {
-            logger.println("ERROR: Failed to get final job events from tower: " + e.getMessage());
+            logger.println("ERROR: Failed to poll job status from Tower: " + e.getMessage());
             myTowerConnection.releaseToken();
             return false;
         }
 
-        boolean wasSuccessful;
-        try {
-            wasSuccessful = this.myJob.wasSuccessful();
-        } catch (AnsibleTowerException e) {
-            logger.println("ERROR: Failed to get job compltion status: " + e.getMessage());
-            myTowerConnection.releaseToken();
-            return false;
-        }
+        boolean wasSuccessful = pollingResult.isSuccessful();
+        towerResults.put("LOG_IMPORT_RESULT", pollingResult.getLogImportResult());
 
         HashMap<String, String> jenkinsVariables;
         try {

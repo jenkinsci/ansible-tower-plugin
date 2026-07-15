@@ -1,14 +1,102 @@
 package org.jenkinsci.plugins.ansible_tower.util;
 
 import java.io.IOException;
+import java.io.OutputStream;
+import java.net.InetSocketAddress;
+import java.net.SocketTimeoutException;
 import java.nio.charset.StandardCharsets;
+import java.util.Vector;
+import java.util.concurrent.atomic.AtomicInteger;
+import javax.net.ssl.SSLHandshakeException;
+import com.sun.net.httpserver.HttpExchange;
+import com.sun.net.httpserver.HttpServer;
 import net.sf.json.JSONObject;
 import org.apache.http.util.EntityUtils;
+import org.apache.http.params.BasicHttpParams;
+import org.apache.http.params.HttpConnectionParams;
+import org.apache.http.conn.params.ConnManagerParams;
 import org.hamcrest.CoreMatchers;
 import org.hamcrest.MatcherAssert;
 import org.junit.jupiter.api.Test;
 
 class TowerConnectorTest {
+
+    @Test
+    public void configureHttpTimeouts_appliesConnectPoolAndReadLimits() {
+        BasicHttpParams params = new BasicHttpParams();
+
+        TowerConnector.configureHttpTimeouts(params);
+
+        MatcherAssert.assertThat(HttpConnectionParams.getConnectionTimeout(params), CoreMatchers.is(10000));
+        MatcherAssert.assertThat(ConnManagerParams.getTimeout(params), CoreMatchers.is(10000L));
+        MatcherAssert.assertThat(HttpConnectionParams.getSoTimeout(params), CoreMatchers.is(30000));
+    }
+
+    @Test
+    public void transientTransportClassification_excludesTlsConfigurationFailures() {
+        MatcherAssert.assertThat(
+            TowerConnector.isTransientTransportFailure(new SocketTimeoutException("timed out")),
+            CoreMatchers.is(true));
+        MatcherAssert.assertThat(
+            TowerConnector.isTransientTransportFailure(new SSLHandshakeException("bad certificate")),
+            CoreMatchers.is(false));
+    }
+
+    @Test
+    public void workflowEvents_processCompletedParallelNodesAcrossPagesWithoutDuplicates() throws Exception {
+        AtomicInteger firstPageCalls = new AtomicInteger();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/api/v2/ping/", exchange -> respond(exchange,
+            "{\"version\":\"3.8.0\"}"));
+        server.createContext("/api/v2/workflow_jobs/7/workflow_nodes/", exchange -> {
+            if(exchange.getRequestURI().getQuery().contains("page=2")) {
+                respond(exchange, workflowPage(null, node(3, "third", "successful")));
+                return;
+            }
+            boolean firstRequest = firstPageCalls.incrementAndGet() == 1;
+            respond(exchange, workflowPage(
+                "/api/v2/workflow_jobs/7/workflow_nodes/?page=2",
+                node(1, "first", firstRequest ? "running" : "successful"),
+                node(2, "second", "successful")));
+        });
+        server.start();
+        try {
+            TowerConnector connector = new TowerConnector(
+                "http://127.0.0.1:" + server.getAddress().getPort(), null, null,
+                "test-token", false, false);
+
+            Vector<String> firstImport = connector.getLogEventsOnce(7L, TowerConnector.WORKFLOW_TEMPLATE_TYPE);
+            Vector<String> secondImport = connector.getLogEventsOnce(7L, TowerConnector.WORKFLOW_TEMPLATE_TYPE);
+
+            MatcherAssert.assertThat(firstImport.toString(), CoreMatchers.containsString("second => successful"));
+            MatcherAssert.assertThat(firstImport.toString(), CoreMatchers.containsString("third => successful"));
+            MatcherAssert.assertThat(firstImport.toString().contains("first =>"), CoreMatchers.is(false));
+            MatcherAssert.assertThat(secondImport.toString(), CoreMatchers.containsString("first => successful"));
+            MatcherAssert.assertThat(secondImport.toString().contains("second =>"), CoreMatchers.is(false));
+            MatcherAssert.assertThat(secondImport.toString().contains("third =>"), CoreMatchers.is(false));
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    private static String node(long id, String name, String status) {
+        return "{\"id\":" + id + ",\"summary_fields\":{\"job\":{\"id\":" + (100 + id)
+            + ",\"name\":\"" + name + "\",\"status\":\"" + status
+            + "\"},\"unified_job_template\":{\"unified_job_type\":\"job\"}}}";
+    }
+
+    private static String workflowPage(String next, String... nodes) {
+        String nextValue = next == null ? "null" : "\"" + next + "\"";
+        return "{\"next\":" + nextValue + ",\"results\":[" + String.join(",", nodes) + "]}";
+    }
+
+    private static void respond(HttpExchange exchange, String body) throws IOException {
+        byte[] response = body.getBytes(StandardCharsets.UTF_8);
+        exchange.sendResponseHeaders(200, response.length);
+        try(OutputStream output = exchange.getResponseBody()) {
+            output.write(response);
+        }
+    }
 
     @Test
     public void createJsonEntity_encodesNonAsciiContentAsUtf8() throws IOException {
@@ -160,5 +248,28 @@ class TowerConnectorTest {
         MatcherAssert.assertThat(TowerConnector.isTransientGatewayStatus(504), CoreMatchers.is(true));
         MatcherAssert.assertThat(TowerConnector.isTransientGatewayStatus(500), CoreMatchers.is(false));
         MatcherAssert.assertThat(TowerConnector.isTransientGatewayStatus(200), CoreMatchers.is(false));
+    }
+
+    @Test
+    public void buildRetryLogMessage_containsOperationalMetadataWithoutPayload() {
+        String message = TowerConnector.buildRetryLogMessage(
+                "workflow_events_poll", 720828L, TowerConnector.WORKFLOW_TEMPLATE_TYPE,
+                "/api/controller/v2/workflow_jobs/720828/workflow_nodes/", 502, 1, 5, 10000L);
+
+        MatcherAssert.assertThat(message, CoreMatchers.is(
+                "workflow_events_poll failed: jobId=720828, templateType=workflow, "
+                + "endpoint=/api/controller/v2/workflow_jobs/720828/workflow_nodes/, "
+                + "httpStatus=502, attempt=1/5, retryDelayMs=10000"));
+    }
+
+    @Test
+    public void buildRetryExhaustedLogMessage_containsFinalAttemptMetadata() {
+        String message = TowerConnector.buildRetryExhaustedLogMessage(
+                "job_status_poll", 720828L, TowerConnector.JOB_TEMPLATE_TYPE,
+                "/api/controller/v2/jobs/720828/", 504, 6);
+
+        MatcherAssert.assertThat(message, CoreMatchers.is(
+                "job_status_poll exhausted retries: jobId=720828, templateType=job, "
+                + "endpoint=/api/controller/v2/jobs/720828/, httpStatus=504, attempts=6"));
     }
 }
