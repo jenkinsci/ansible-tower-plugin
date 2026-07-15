@@ -23,6 +23,20 @@ The Ansible Tower Plugin connects Jenkins to Ansible Tower, AWX, and Red Hat Ans
 
 For local development, use JDK 21 and Maven 3.9.6 or newer.
 
+### Java 17 compatibility verification
+
+The minimum Jenkins baseline, Jenkins 2.504.3, has been verified with OpenJDK 17. The plugin classes built by JDK 21 use Java 17 bytecode (class-file major version 61), and the generated HPI declares `Java-Version: 17`.
+
+To verify the minimum runtime locally, point `JAVA_HOME` and `PATH` to a JDK 17 installation and run the standard build without skipping tests:
+
+```bash
+JAVA_HOME=/path/to/jdk-17 \
+PATH=/path/to/jdk-17/bin:$PATH \
+mvn -ntp clean verify
+```
+
+This verification starts Jenkins 2.504.3 under the Jenkins Test Harness and checks plugin loading, Apache HttpClient API plugin class loading, descriptor registration, configuration round trips, data-bound fields, and the existing HTTP behavior tests. A successful run must complete without `UnsupportedClassVersionError`, `ClassNotFoundException`, `NoClassDefFoundError`, or other linkage errors.
+
 ## Installation
 
 1. Open **Manage Jenkins → Plugins**.
