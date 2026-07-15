@@ -10,9 +10,13 @@ import org.apache.http.client.methods.*;
 import org.jenkinsci.plugins.ansible_tower.exceptions.AnsibleTowerDoesNotSupportAuthToken;
 import org.jenkinsci.plugins.ansible_tower.exceptions.AnsibleTowerRefusesToGiveToken;
 import org.jenkinsci.plugins.ansible_tower.exceptions.AnsibleTowerException;
+import org.jenkinsci.plugins.ansible_tower.exceptions.AnsibleTowerTransientException;
 
 import java.io.*;
 import java.net.URI;
+import java.net.ConnectException;
+import java.net.SocketException;
+import java.net.SocketTimeoutException;
 import java.net.URISyntaxException;
 import java.net.URLEncoder;
 import java.nio.charset.Charset;
@@ -36,6 +40,8 @@ import org.apache.http.impl.conn.tsccm.ThreadSafeClientConnManager;
 import org.apache.http.params.BasicHttpParams;
 import org.apache.http.params.HttpParams;
 import org.apache.http.params.HttpProtocolParams;
+import org.apache.http.params.HttpConnectionParams;
+import org.apache.http.conn.params.ConnManagerParams;
 import org.apache.http.protocol.HTTP;
 import org.apache.http.util.EntityUtils;
 import org.jenkinsci.plugins.ansible_tower.exceptions.AnsibleTowerItemDoesNotExist;
@@ -66,8 +72,9 @@ public class TowerConnector implements Serializable {
     private boolean trustAllCerts = true;
     private boolean importChildWorkflowLogs = false;
     private TowerLogger logger = new TowerLogger();
-    private HashMap<Long, Long> logIdForWorkflows = new HashMap<Long, Long>();
+    private HashMap<Long, Set<Long>> processedWorkflowNodeIds = new HashMap<Long, Set<Long>>();
     private HashMap<Long, Long> logIdForJobs = new HashMap<Long, Long>();
+    private HashMap<Long, Boolean> completedJobFailures = new HashMap<Long, Boolean>();
 
     private boolean removeColor = true;
     private boolean getFullLogs = false;
@@ -139,6 +146,8 @@ public class TowerConnector implements Serializable {
             throw new AnsibleTowerException("Unable to prase base url: "+ urise);
         }
 
+        HttpParams params = new BasicHttpParams();
+        configureHttpTimeouts(params);
         if(trustAllCerts && myURI.getScheme().equalsIgnoreCase("https")) {
             logger.debug("Forcing cert trust");
             TrustingSSLSocketFactory sf;
@@ -151,7 +160,6 @@ public class TowerConnector implements Serializable {
             }
             sf.setHostnameVerifier(SSLSocketFactory.ALLOW_ALL_HOSTNAME_VERIFIER);
 
-            HttpParams params = new BasicHttpParams();
             HttpProtocolParams.setVersion(params, HttpVersion.HTTP_1_1);
             HttpProtocolParams.setContentCharset(params, HTTP.UTF_8);
 
@@ -162,8 +170,14 @@ public class TowerConnector implements Serializable {
 
             return new DefaultHttpClient(ccm, params);
         } else {
-            return new DefaultHttpClient();
+            return new DefaultHttpClient(params);
         }
+    }
+
+    static void configureHttpTimeouts(HttpParams params) {
+        HttpConnectionParams.setConnectionTimeout(params, 10000);
+        ConnManagerParams.setTimeout(params, 10000L);
+        HttpConnectionParams.setSoTimeout(params, 30000);
     }
 
     private String buildEndpoint(String endpoint) {
@@ -350,6 +364,11 @@ public class TowerConnector implements Serializable {
         try {
             response = httpClient.execute(request);
         } catch(Exception e) {
+            if(isTransientTransportFailure(e)) {
+                throw new AnsibleTowerTransientException("Transient Tower transport failure: method="
+                    + getMethodName(requestType) + ", endpoint=" + buildEndpoint(endpoint)
+                    + ", cause=" + e.getClass().getSimpleName(), e);
+            }
             throw new AnsibleTowerException("Unable to make tower request: "+ e.getMessage());
         }
 
@@ -383,6 +402,22 @@ public class TowerConnector implements Serializable {
         }
 
         return response;
+    }
+
+    static boolean isTransientTransportFailure(Throwable failure) {
+        Throwable current = failure;
+        while(current != null) {
+            if(current instanceof SocketTimeoutException || current instanceof ConnectException
+                    || current instanceof SocketException
+                    || current instanceof java.io.InterruptedIOException
+                    || "NoHttpResponseException".equals(current.getClass().getSimpleName())
+                    || "ConnectionPoolTimeoutException".equals(current.getClass().getSimpleName())
+                    || "HttpHostConnectException".equals(current.getClass().getSimpleName())) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
     }
 
     private boolean towerSupports(String end_point) throws AnsibleTowerException {
@@ -737,7 +772,8 @@ public class TowerConnector implements Serializable {
                 throw new AnsibleTowerException("Tower received a bad request (400 response code)");
             }
         } else {
-            throw new AnsibleTowerException("Unexpected error code returned ("+ response.getStatusLine().getStatusCode() +")");
+            throw new AnsibleTowerException("Unexpected error code returned ("
+                + response.getStatusLine().getStatusCode() + ")");
         }
     }
 
@@ -748,38 +784,36 @@ public class TowerConnector implements Serializable {
     }
 
     public boolean isJobCompleted(long jobID, String templateType) throws AnsibleTowerException {
-        checkTemplateType(templateType);
-
-        String apiEndpoint = "/jobs/"+ jobID +"/";
-        if(templateType.equalsIgnoreCase(WORKFLOW_TEMPLATE_TYPE)) { apiEndpoint = "/workflow_jobs/"+ jobID +"/"; }
-        HttpResponse response = makeRequest(GET, apiEndpoint);
-
         int retryCount = 0;
-        while(isTransientGatewayStatus(response.getStatusLine().getStatusCode())
-                && retryCount < MAX_TRANSIENT_GATEWAY_RETRIES) {
-            retryCount++;
-            int statusCode = response.getStatusLine().getStatusCode();
-            logger.warning(buildRetryLogMessage("job_status_poll", jobID, templateType,
-                buildEndpoint(apiEndpoint), statusCode, retryCount, MAX_TRANSIENT_GATEWAY_RETRIES,
-                TRANSIENT_GATEWAY_RETRY_DELAY_MS));
-            EntityUtils.consumeQuietly(response.getEntity());
+        while(true) {
             try {
-                Thread.sleep(TRANSIENT_GATEWAY_RETRY_DELAY_MS);
-            } catch(InterruptedException ie) {
-                Thread.currentThread().interrupt();
-                throw new AnsibleTowerException("Interrupted while retrying job status request after HTTP "
-                    + statusCode + " for job " + jobID);
+                return pollJobStatusOnce(jobID, templateType).isCompleted();
+            } catch(AnsibleTowerTransientException transientFailure) {
+                if(retryCount >= MAX_TRANSIENT_GATEWAY_RETRIES) {
+                    logger.severe("job_status_poll exhausted: jobId=" + jobID
+                        + ", templateType=" + templateType + ", attempts=" + (retryCount + 1));
+                    throw transientFailure;
+                }
+                retryCount++;
+                logger.warning(buildRetryLogMessage("job_status_poll", jobID, templateType,
+                    buildEndpoint(statusEndpoint(jobID, templateType)), transientFailure.getStatusCode(),
+                    retryCount, MAX_TRANSIENT_GATEWAY_RETRIES, TRANSIENT_GATEWAY_RETRY_DELAY_MS));
+                try {
+                    Thread.sleep(TRANSIENT_GATEWAY_RETRY_DELAY_MS);
+                } catch(InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    throw new AnsibleTowerException("Interrupted while retrying job status request", interrupted);
+                }
             }
-            response = makeRequest(GET, apiEndpoint);
         }
+    }
 
-        if(isTransientGatewayStatus(response.getStatusLine().getStatusCode())) {
-            logger.severe(buildRetryExhaustedLogMessage("job_status_poll", jobID, templateType,
-                buildEndpoint(apiEndpoint), response.getStatusLine().getStatusCode(),
-                MAX_TRANSIENT_GATEWAY_RETRIES + 1));
-        }
-
-        if(response.getStatusLine().getStatusCode() == 200) {
+    TowerJobStatus pollJobStatusOnce(long jobID, String templateType) throws AnsibleTowerException {
+        checkTemplateType(templateType);
+        String apiEndpoint = statusEndpoint(jobID, templateType);
+        HttpResponse response = makeRequest(GET, apiEndpoint);
+        int statusCode = response.getStatusLine().getStatusCode();
+        if(statusCode == 200) {
             JSONObject responseObject;
             String json;
             try {
@@ -792,8 +826,9 @@ public class TowerConnector implements Serializable {
             if (responseObject.containsKey("finished")) {
                 String finished = responseObject.getString("finished");
                 if(finished == null || finished.equalsIgnoreCase("null")) {
-                    return false;
+                    return new TowerJobStatus(false, false);
                 } else {
+                    Map<String, String> statusArtifacts = new HashMap<String, String>();
                     // Since we were finished we will now also check for stats
                     if(responseObject.containsKey(ARTIFACTS)) {
                         logger.debug("Processing artifacts");
@@ -806,20 +841,38 @@ public class TowerConnector implements Serializable {
                                 Iterator<String> keyIterator = entry.keys();
                                 while(keyIterator.hasNext()) {
                                     String key = keyIterator.next();
-                                    jenkinsExports.put(key, entry.getString(key));
+                                    String value = entry.getString(key);
+                                    jenkinsExports.put(key, value);
+                                    statusArtifacts.put(key, value);
                                 }
                             }
                         }
                     }
-                    return true;
+                    if(!responseObject.containsKey("failed")) {
+                        throw new AnsibleTowerException("Tower job response did not contain a failed status");
+                    }
+                    boolean failed = responseObject.getBoolean("failed");
+                    completedJobFailures.put(jobID, failed);
+                    return new TowerJobStatus(true, failed, statusArtifacts);
                 }
             }
             logger.severe("Tower job status response did not contain finished: jobId=" + jobID
                 + ", templateType=" + templateType);
             throw new AnsibleTowerException("Tower job response did not contain a finished status");
+        } else if(isTransientGatewayStatus(statusCode)) {
+            EntityUtils.consumeQuietly(response.getEntity());
+            throw new AnsibleTowerTransientException("jobId=" + jobID + ", templateType="
+                + templateType + ", endpoint=" + buildEndpoint(apiEndpoint), statusCode);
         } else {
-            throw new AnsibleTowerException("Unexpected error code returned (" + response.getStatusLine().getStatusCode() + ")");
+            throw new AnsibleTowerException("Unexpected error code returned (" + statusCode + ")");
         }
+    }
+
+    private String statusEndpoint(long jobID, String templateType) {
+        if(templateType.equalsIgnoreCase(WORKFLOW_TEMPLATE_TYPE)) {
+            return "/workflow_jobs/" + jobID + "/";
+        }
+        return "/jobs/" + jobID + "/";
     }
 
     static boolean isTransientGatewayStatus(int statusCode) {
@@ -917,6 +970,30 @@ public class TowerConnector implements Serializable {
     }
 
     public Vector<String> getLogEvents(long jobID, String templateType) throws AnsibleTowerException {
+        int retryCount = 0;
+        while(true) {
+            try {
+                return getLogEventsOnce(jobID, templateType);
+            } catch(AnsibleTowerTransientException transientFailure) {
+                if(retryCount >= MAX_TRANSIENT_GATEWAY_RETRIES) {
+                    throw transientFailure;
+                }
+                retryCount++;
+                logger.warning("job_events_poll failed: jobId=" + jobID + ", templateType="
+                    + templateType + ", retry=" + retryCount + "/" + MAX_TRANSIENT_GATEWAY_RETRIES
+                    + ", httpStatus=" + transientFailure.getStatusCode()
+                    + ", retryDelayMs=" + TRANSIENT_GATEWAY_RETRY_DELAY_MS);
+                try {
+                    Thread.sleep(TRANSIENT_GATEWAY_RETRY_DELAY_MS);
+                } catch(InterruptedException interrupted) {
+                    Thread.currentThread().interrupt();
+                    throw new AnsibleTowerException("Interrupted while retrying job events request", interrupted);
+                }
+            }
+        }
+    }
+
+    Vector<String> getLogEventsOnce(long jobID, String templateType) throws AnsibleTowerException {
         Vector<String> events = new Vector<String>();
         checkTemplateType(templateType);
         if(templateType.equalsIgnoreCase(JOB_TEMPLATE_TYPE)) {
@@ -934,36 +1011,23 @@ public class TowerConnector implements Serializable {
 
     private Vector<String> logWorkflowEvents(long jobID, boolean importWorkflowChildLogs) throws AnsibleTowerException {
         Vector<String> events = new Vector<String>();
-        if(!this.logIdForWorkflows.containsKey(jobID)) { this.logIdForWorkflows.put(jobID, 0L); }
-        String apiEndpoint = "/workflow_jobs/"+ jobID +"/workflow_nodes/?id__gt="+this.logIdForWorkflows.get(jobID);
-        HttpResponse response = makeRequest(GET, apiEndpoint);
-
-        int retryCount = 0;
-        while(isTransientGatewayStatus(response.getStatusLine().getStatusCode())
-                && retryCount < MAX_TRANSIENT_GATEWAY_RETRIES) {
-            retryCount++;
+        Set<Long> processed = this.processedWorkflowNodeIds.get(jobID);
+        if(processed == null) {
+            processed = new HashSet<Long>();
+            this.processedWorkflowNodeIds.put(jobID, processed);
+        }
+        String apiEndpoint = "/workflow_jobs/" + jobID + "/workflow_nodes/?id__gt=0";
+        while(apiEndpoint != null) {
+            HttpResponse response = makeRequest(GET, apiEndpoint);
             int statusCode = response.getStatusLine().getStatusCode();
-            logger.warning(buildRetryLogMessage("workflow_events_poll", jobID, WORKFLOW_TEMPLATE_TYPE,
-                buildEndpoint(apiEndpoint), statusCode, retryCount, MAX_TRANSIENT_GATEWAY_RETRIES,
-                TRANSIENT_GATEWAY_RETRY_DELAY_MS));
-            EntityUtils.consumeQuietly(response.getEntity());
-            try {
-                Thread.sleep(TRANSIENT_GATEWAY_RETRY_DELAY_MS);
-            } catch(InterruptedException ie) {
-                Thread.currentThread().interrupt();
-                throw new AnsibleTowerException("Interrupted while retrying workflow events request after HTTP "
-                    + statusCode + " for job " + jobID);
+            if(isTransientGatewayStatus(statusCode)) {
+                EntityUtils.consumeQuietly(response.getEntity());
+                throw new AnsibleTowerTransientException("jobId=" + jobID + ", templateType=workflow"
+                    + ", endpoint=" + buildEndpoint(apiEndpoint), statusCode);
             }
-            response = makeRequest(GET, apiEndpoint);
-        }
-
-        if(isTransientGatewayStatus(response.getStatusLine().getStatusCode())) {
-            logger.severe(buildRetryExhaustedLogMessage("workflow_events_poll", jobID,
-                WORKFLOW_TEMPLATE_TYPE, buildEndpoint(apiEndpoint),
-                response.getStatusLine().getStatusCode(), MAX_TRANSIENT_GATEWAY_RETRIES + 1));
-        }
-
-        if(response.getStatusLine().getStatusCode() == 200) {
+            if(statusCode != 200) {
+                throw new AnsibleTowerException("Unexpected error code returned (" + statusCode + ")");
+            }
             JSONObject responseObject;
             String json;
             try {
@@ -979,6 +1043,7 @@ public class TowerConnector implements Serializable {
                 for(Object anEventObject : responseObject.getJSONArray("results")) {
                     JSONObject anEvent = (JSONObject) anEventObject;
                     long eventId = anEvent.getLong("id");
+                    if(processed.contains(eventId)) { continue; }
 
                     if(!anEvent.containsKey("summary_fields")) { continue; }
 
@@ -995,39 +1060,46 @@ public class TowerConnector implements Serializable {
                             job.getString("status").equalsIgnoreCase("running") ||
                             job.getString("status").equalsIgnoreCase("pending")
                     ) {
-                        // Here we want to return. Otherwise we might "loose" things.
-                        // For async_pipeline, say there are three nodes in the pipeline.
-                        // Node 1 takes a long time, Node 2 which runs in parallel is quick
-                        // If Node 2 executes second and completed we will use the ID of node 2 as the next ID.
-                        // Node 1 results will be lost because node 2 has already finished.
-                        // Returning will prevent this from happening.
-                        return events;
+                        continue;
                     }
 
-                    if(eventId > this.logIdForWorkflows.get(jobID)) { this.logIdForWorkflows.put(jobID, eventId); }
-                    events.addAll(logLine(job.getString("name") +" => "+ job.getString("status") +" "+ this.getJobURL(job.getLong("id"), templateType.getString(UNIFIED_JOB_TYPE))));
+                    Vector<String> nodeEvents = new Vector<String>();
+                    nodeEvents.addAll(logLine(job.getString("name") +" => "+ job.getString("status") +" "+ this.getJobURL(job.getLong("id"), templateType.getString(UNIFIED_JOB_TYPE))));
 
                     if(importWorkflowChildLogs) {
                         if(templateType.getString(UNIFIED_JOB_TYPE).equalsIgnoreCase("job")) {
-                            // We only need to call this once because the job is completed at this point
-                            events.addAll(logJobEvents(job.getLong("id")));
+                            nodeEvents.addAll(logJobEvents(job.getLong("id")));
                         } else if(templateType.getString(UNIFIED_JOB_TYPE).equalsIgnoreCase("project_update")) {
-                            events.addAll(logProjectSync(job.getLong("id")));
+                            nodeEvents.addAll(logProjectSync(job.getLong("id")));
                         } else if(templateType.getString(UNIFIED_JOB_TYPE).equalsIgnoreCase("inventory_update")) {
-                            events.addAll(logInventorySync(job.getLong("id")));
+                            nodeEvents.addAll(logInventorySync(job.getLong("id")));
                         } else {
-                            events.addAll(logLine("Unknown job type in workflow: "+ templateType.getString(UNIFIED_JOB_TYPE)));
+                            nodeEvents.addAll(logLine("Unknown job type in workflow: "+ templateType.getString(UNIFIED_JOB_TYPE)));
                         }
                     }
-                    // Print two spaces to put some space between this and the next task.
-                    events.addAll(logLine(""));
-                    events.addAll(logLine(""));
+                    nodeEvents.addAll(logLine(""));
+                    nodeEvents.addAll(logLine(""));
+                    processed.add(eventId);
+                    events.addAll(nodeEvents);
                 }
             }
-        } else {
-            throw new AnsibleTowerException("Unexpected error code returned ("+ response.getStatusLine().getStatusCode() +")");
+            apiEndpoint = nextPage(responseObject);
         }
         return events;
+    }
+
+    private String nextPage(JSONObject responseObject) {
+        if(!responseObject.containsKey("next") || responseObject.get("next") == null) {
+            return null;
+        }
+        String next = responseObject.getString("next");
+        if("null".equalsIgnoreCase(next) || next.isEmpty()) {
+            return null;
+        }
+        if(next.startsWith(this.url)) {
+            return next.substring(this.url.length());
+        }
+        return next;
     }
 
     public Vector<String> logLine(String output) throws AnsibleTowerException {
@@ -1080,7 +1152,8 @@ public class TowerConnector implements Serializable {
                 events.addAll(logLine(responseObject.getString("result_stdout")));
             }
         } else {
-            throw new AnsibleTowerException("Unexpected error code returned ("+ response.getStatusLine().getStatusCode() +")");
+            throw logImportFailure("inventory update: syncId=" + syncID
+                + ", endpoint=" + buildEndpoint(apiURL), response);
         }
         return events;
     }
@@ -1108,7 +1181,8 @@ public class TowerConnector implements Serializable {
                 events.addAll(logLine(responseObject.getString("result_stdout")));
             }
         } else {
-            throw new AnsibleTowerException("Unexpected error code returned ("+ response.getStatusLine().getStatusCode() +")");
+            throw logImportFailure("project update: syncId=" + syncID
+                + ", endpoint=" + buildEndpoint(apiURL), response);
         }
         return events;
     }
@@ -1116,9 +1190,9 @@ public class TowerConnector implements Serializable {
     private Vector<String> logJobEvents(long jobID) throws AnsibleTowerException {
         Vector<String> events = new Vector<String>();
         if(!this.logIdForJobs.containsKey(jobID)) { this.logIdForJobs.put(jobID, 0L); }
-        boolean keepChecking = true;
-        while(keepChecking) {
-            String apiURL = "/jobs/" + jobID + "/job_events/?id__gt="+ this.logIdForJobs.get(jobID);
+        long highestEventId = this.logIdForJobs.get(jobID);
+        String apiURL = "/jobs/" + jobID + "/job_events/?id__gt=" + highestEventId;
+        while(apiURL != null) {
             HttpResponse response = makeRequest(GET, apiURL);
 
             if (response.getStatusLine().getStatusCode() == 200) {
@@ -1131,9 +1205,6 @@ public class TowerConnector implements Serializable {
                     throw new AnsibleTowerException("Unable to read response and convert it into json: " + ioe.getMessage());
                 }
 
-                if(responseObject.containsKey("next") && responseObject.getString("next") == null || responseObject.getString("next").equalsIgnoreCase("null")) {
-                    keepChecking = false;
-                }
                 if (responseObject.containsKey("results")) {
                     logger.debug("Job events received: jobId=" + jobID
                         + ", resultCount=" + responseObject.getJSONArray("results").size());
@@ -1152,20 +1223,36 @@ public class TowerConnector implements Serializable {
                             }
                         }
                         events.addAll(logLine(stdOut));
-                        if (eventId > this.logIdForJobs.get(jobID)) {
-                            this.logIdForJobs.put(jobID, eventId);
+                        if (eventId > highestEventId) {
+                            highestEventId = eventId;
                         }
                     }
                 }
+                apiURL = nextPage(responseObject);
             } else {
-                throw new AnsibleTowerException("Unexpected error code returned (" + response.getStatusLine().getStatusCode() + ")");
+                throw logImportFailure("job events: jobId=" + jobID
+                    + ", endpoint=" + buildEndpoint(apiURL), response);
             }
         }
+        this.logIdForJobs.put(jobID, highestEventId);
         return events;
+    }
+
+    private AnsibleTowerException logImportFailure(String operation, HttpResponse response) {
+        int statusCode = response.getStatusLine().getStatusCode();
+        EntityUtils.consumeQuietly(response.getEntity());
+        if(isTransientGatewayStatus(statusCode)) {
+            return new AnsibleTowerTransientException(operation, statusCode);
+        }
+        return new AnsibleTowerException("Unexpected error code returned (" + statusCode + ")");
     }
 
     public boolean isJobFailed(long jobID, String templateType) throws AnsibleTowerException {
         checkTemplateType(templateType);
+
+        if(completedJobFailures.containsKey(jobID)) {
+            return completedJobFailures.get(jobID);
+        }
 
         String apiEndPoint = "/jobs/"+ jobID +"/";
         if(templateType.equalsIgnoreCase(WORKFLOW_TEMPLATE_TYPE)) { apiEndPoint = "/workflow_jobs/"+ jobID +"/"; }
