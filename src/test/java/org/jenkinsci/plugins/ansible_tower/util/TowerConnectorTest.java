@@ -138,4 +138,13 @@ public class TowerConnectorTest {
                 TowerConnector.buildJobURL("https://aap.example.com", TowerConnector.API_BASE_PATH_AAP_CONTROLLER, 10, "inventory_update"),
                 CoreMatchers.is("https://aap.example.com/execution/jobs/inventory_update/10/output"));
     }
+
+    @Test
+    public void isTransientGatewayStatus_onlyRetriesGatewayFailures() {
+        Assert.assertThat(TowerConnector.isTransientGatewayStatus(502), CoreMatchers.is(true));
+        Assert.assertThat(TowerConnector.isTransientGatewayStatus(503), CoreMatchers.is(true));
+        Assert.assertThat(TowerConnector.isTransientGatewayStatus(504), CoreMatchers.is(true));
+        Assert.assertThat(TowerConnector.isTransientGatewayStatus(500), CoreMatchers.is(false));
+        Assert.assertThat(TowerConnector.isTransientGatewayStatus(200), CoreMatchers.is(false));
+    }
 }
