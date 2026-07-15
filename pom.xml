@@ -33,7 +33,8 @@
 
     <properties>
         <changelist>999999-SNAPSHOT</changelist>
-        <jenkins.version>2.504.3</jenkins.version>
+        <jenkins.baseline>2.504</jenkins.baseline>
+        <jenkins.version>${jenkins.baseline}.3</jenkins.version>
         <hpi.strictBundledArtifacts>true</hpi.strictBundledArtifacts>
         <ban-junit4-imports.skip>false</ban-junit4-imports.skip>
         <ban-deprecated-stapler.skip>false</ban-deprecated-stapler.skip>
@@ -59,7 +60,7 @@
         <dependencies>
             <dependency>
                 <groupId>io.jenkins.tools.bom</groupId>
-                <artifactId>bom-2.504.x</artifactId>
+                <artifactId>bom-${jenkins.baseline}.x</artifactId>
                 <version>5983.v443959746f1f</version>
                 <scope>import</scope>
                 <type>pom</type>
