@@ -51,8 +51,8 @@ public class TowerConnector implements Serializable {
     public static final String API_BASE_PATH_AAP_CONTROLLER = "/api/controller/v2";
     public static final String API_GATEWAY_TOKEN_ENDPOINT = "/api/gateway/v1/tokens/";
     private static final String ARTIFACTS = "artifacts";
-    private static final int MAX_JOB_STATUS_RETRIES = 5;
-    private static final long JOB_STATUS_RETRY_DELAY_MS = 10000L;
+    private static final int MAX_TRANSIENT_GATEWAY_RETRIES = 5;
+    private static final long TRANSIENT_GATEWAY_RETRY_DELAY_MS = 10000L;
 
     private String authorizationHeader = null;
     private String oauthToken = null;
@@ -771,18 +771,18 @@ public class TowerConnector implements Serializable {
 
         int retryCount = 0;
         while(isTransientGatewayStatus(response.getStatusLine().getStatusCode())
-                && retryCount < MAX_JOB_STATUS_RETRIES) {
+                && retryCount < MAX_TRANSIENT_GATEWAY_RETRIES) {
             retryCount++;
             int statusCode = response.getStatusLine().getStatusCode();
             logger.logMessage("Job status poll failed: jobID=" + jobID
                 + ", templateType=" + templateType
                 + ", endpoint=" + buildEndpoint(apiEndpoint)
                 + ", httpStatus=" + statusCode
-                + ", retry=" + retryCount + "/" + MAX_JOB_STATUS_RETRIES
-                + ", retryDelaySeconds=" + (JOB_STATUS_RETRY_DELAY_MS / 1000L));
+                + ", retry=" + retryCount + "/" + MAX_TRANSIENT_GATEWAY_RETRIES
+                + ", retryDelaySeconds=" + (TRANSIENT_GATEWAY_RETRY_DELAY_MS / 1000L));
             EntityUtils.consumeQuietly(response.getEntity());
             try {
-                Thread.sleep(JOB_STATUS_RETRY_DELAY_MS);
+                Thread.sleep(TRANSIENT_GATEWAY_RETRY_DELAY_MS);
             } catch(InterruptedException ie) {
                 Thread.currentThread().interrupt();
                 throw new AnsibleTowerException("Interrupted while retrying job status request after HTTP "
@@ -927,7 +927,29 @@ public class TowerConnector implements Serializable {
     private Vector<String> logWorkflowEvents(long jobID, boolean importWorkflowChildLogs) throws AnsibleTowerException {
         Vector<String> events = new Vector<String>();
         if(!this.logIdForWorkflows.containsKey(jobID)) { this.logIdForWorkflows.put(jobID, 0L); }
-        HttpResponse response = makeRequest(GET, "/workflow_jobs/"+ jobID +"/workflow_nodes/?id__gt="+this.logIdForWorkflows.get(jobID));
+        String apiEndpoint = "/workflow_jobs/"+ jobID +"/workflow_nodes/?id__gt="+this.logIdForWorkflows.get(jobID);
+        HttpResponse response = makeRequest(GET, apiEndpoint);
+
+        int retryCount = 0;
+        while(isTransientGatewayStatus(response.getStatusLine().getStatusCode())
+                && retryCount < MAX_TRANSIENT_GATEWAY_RETRIES) {
+            retryCount++;
+            int statusCode = response.getStatusLine().getStatusCode();
+            logger.logMessage("Workflow events poll failed: jobID=" + jobID
+                + ", endpoint=" + buildEndpoint(apiEndpoint)
+                + ", httpStatus=" + statusCode
+                + ", retry=" + retryCount + "/" + MAX_TRANSIENT_GATEWAY_RETRIES
+                + ", retryDelaySeconds=" + (TRANSIENT_GATEWAY_RETRY_DELAY_MS / 1000L));
+            EntityUtils.consumeQuietly(response.getEntity());
+            try {
+                Thread.sleep(TRANSIENT_GATEWAY_RETRY_DELAY_MS);
+            } catch(InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                throw new AnsibleTowerException("Interrupted while retrying workflow events request after HTTP "
+                    + statusCode + " for job " + jobID);
+            }
+            response = makeRequest(GET, apiEndpoint);
+        }
 
         if(response.getStatusLine().getStatusCode() == 200) {
             JSONObject responseObject;
