@@ -43,7 +43,7 @@
         <revision>0.18.1</revision>
         <changelist>999999-SNAPSHOT</changelist>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <jenkins.version>2.555.1</jenkins.version>
+        <jenkins.version>2.479.1</jenkins.version>
         <maven.compiler.release>21</maven.compiler.release>
     </properties>
 
@@ -64,6 +64,12 @@
     <build>
         <plugins>
             <plugin>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <release>21</release>
+                </configuration>
+            </plugin>
+            <plugin>
                 <groupId>org.jenkins-ci.tools</groupId>
                 <artifactId>maven-hpi-plugin</artifactId>
                 <configuration>
@@ -78,8 +84,8 @@
         <dependencies>
             <dependency>
                 <groupId>io.jenkins.tools.bom</groupId>
-                <artifactId>bom-2.555.x</artifactId>
-                <version>6687.v4253d9799d33</version>
+                <artifactId>bom-2.479.x</artifactId>
+                <version>3482.vc10d4f6da_28a_</version>
                 <scope>import</scope>
                 <type>pom</type>
             </dependency>
