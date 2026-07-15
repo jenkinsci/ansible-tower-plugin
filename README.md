@@ -15,8 +15,9 @@ The Ansible Tower Plugin connects Jenkins to Ansible Tower, AWX, and Red Hat Ans
 
 ## Requirements
 
-- Jenkins 2.479.1 or newer.
-- Java 21 or newer.
+- Jenkins 2.504.3 or newer. Compatibility is also verified against the Jenkins 2.554 weekly release.
+- Java 17 or newer at runtime, as derived from the Jenkins 2.504.3 baseline.
+- JDK 21 and Maven 3.9.6 or newer to build the plugin locally. Jenkins CI and the official Maven CD workflow also use JDK 21.
 - A reachable Tower, AWX, or AAP controller API.
 - A Jenkins credential with sufficient controller permissions.
 
