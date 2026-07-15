@@ -142,7 +142,7 @@ def result = ansibleTower(
     templateType: 'job',
     towerLogLevel: 'full',
     extraVars: '''---
-environment: uat
+deployment_environment: uat
 release: "${BUILD_TAG}"
 ''',
     inventory: 'UAT Inventory',
@@ -151,9 +151,9 @@ release: "${BUILD_TAG}"
     async: false
 )
 
-echo "AAP job ${result.JOB_ID}: ${result.JOB_URL}"
-echo "Result: ${result.JOB_RESULT}"
-echo "Log import: ${result.LOG_IMPORT_RESULT}"
+// The step currently returns java.util.Properties. Printing the whole result is
+// Sandbox-safe and includes JOB_ID, JOB_URL, JOB_RESULT, and LOG_IMPORT_RESULT.
+echo "AAP result: ${result}"
 ```
 
 ### Parameters
@@ -223,8 +223,7 @@ def result = ansibleTowerProjectSync(
     verbose: false
 )
 
-echo "Sync ${result.SYNC_ID}: ${result.SYNC_URL}"
-echo "Result: ${result.SYNC_RESULT}"
+echo "Project sync result: ${result}"
 ```
 
 ### Project revision
@@ -268,6 +267,12 @@ An asynchronous `ansibleTower` result contains:
 - `LOG_IMPORT_RESULT` with value `DEFERRED`
 - `job`, a `TowerJob` handle
 
+The advanced async example below accesses a Java object returned by the plugin.
+In a sandboxed Pipeline, an administrator must first approve
+`method java.util.Dictionary get java.lang.Object` and may also need to approve
+the `TowerJob` methods used by the Pipeline. Synchronous Pipelines do not need
+these approvals when they only print the complete result as shown above.
+
 ```groovy
 def submitted = ansibleTower(
     towerServer: 'AAP UAT',
@@ -299,13 +304,13 @@ try {
 
 An asynchronous project sync result contains `SYNC_ID`, `SYNC_URL`, and a `sync` handle. `TowerProjectSync` exposes `isComplete()`, `wasSuccessful()`, `getLogs()`, `cancelSync()`, `getURL()`, `getID()`, and `releaseToken()`.
 
-Jenkins may require Script Security approvals before untrusted Pipeline code can invoke methods on these returned Java objects.
+Jenkins may require additional Script Security approvals before untrusted Pipeline code can invoke methods on these returned Java objects.
 
 When username/password authentication creates a temporary token, async mode releases the launch token before returning. Later handle calls may acquire another token; call `releaseToken()` when the handle is no longer needed.
 
 ## Returned values
 
-Synchronous job results are returned as a `Properties`-like object containing:
+Synchronous job results are returned as a `java.util.Properties` object containing:
 
 | Key | Availability | Description |
 | --- | --- | --- |
@@ -320,6 +325,12 @@ finishes successfully while its event or workflow-node endpoints remain unavaila
 the step returns `JOB_RESULT=SUCCESS` and `LOG_IMPORT_RESULT=PARTIAL`.
 
 Project sync results similarly contain `SYNC_ID`, `SYNC_URL`, and, for synchronous execution, `SYNC_RESULT`.
+
+Groovy property access such as `result.JOB_ID`, `result['JOB_ID']`, or
+`result.get('JOB_ID')` can resolve to `java.util.Dictionary.get(Object)` and be
+rejected by Jenkins Pipeline Sandbox. Print the complete result, or have an
+administrator review and approve that signature under **Manage Jenkins →
+In-process Script Approval**.
 
 ### Export data from Ansible
 
