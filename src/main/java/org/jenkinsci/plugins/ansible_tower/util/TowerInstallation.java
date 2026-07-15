@@ -12,7 +12,6 @@ import com.cloudbees.plugins.credentials.common.UsernamePasswordCredentials;
 import com.cloudbees.plugins.credentials.common.StandardUsernamePasswordCredentials;
 import com.cloudbees.plugins.credentials.domains.DomainRequirement;
 
-import edu.umd.cs.findbugs.annotations.SuppressFBWarnings;
 import hudson.model.Run;
 import jenkins.model.Jenkins;
 import org.jenkinsci.plugins.plaincredentials.StringCredentials;
@@ -123,7 +122,6 @@ public class TowerInstallation extends AbstractDescribableImpl<TowerInstallation
         return testConnector;
     }
     
-    @SuppressFBWarnings("DCN_NULLPOINTER_EXCEPTION")
     private static <C extends Credentials> List<C> getCredsList(Class<C> type, Run run) {
         List<C> credsList;
 
@@ -188,4 +186,3 @@ public class TowerInstallation extends AbstractDescribableImpl<TowerInstallation
         }
     }
 }
-

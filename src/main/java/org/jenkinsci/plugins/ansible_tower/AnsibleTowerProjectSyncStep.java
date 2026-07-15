@@ -21,7 +21,7 @@ import org.kohsuke.stapler.DataBoundSetter;
 import org.kohsuke.stapler.QueryParameter;
 import org.kohsuke.stapler.verb.POST;
 
-import javax.annotation.Nonnull;
+import edu.umd.cs.findbugs.annotations.NonNull;
 import java.util.Properties;
 
 import static com.cloudbees.plugins.credentials.CredentialsMatchers.instanceOf;
@@ -38,7 +38,7 @@ public class AnsibleTowerProjectSyncStep extends AbstractStepImpl {
 
     @DataBoundConstructor
     public AnsibleTowerProjectSyncStep(
-            @Nonnull String towerServer, @Nonnull String towerCredentialsId, @Nonnull String project, Boolean verbose,
+            @NonNull String towerServer, @NonNull String towerCredentialsId, @NonNull String project, Boolean verbose,
             Boolean importTowerLogs, Boolean removeColor, Boolean throwExceptionWhenFail, Boolean async
     ) {
         this.towerServer = towerServer;
@@ -51,10 +51,10 @@ public class AnsibleTowerProjectSyncStep extends AbstractStepImpl {
         this.async = async;
     }
 
-    @Nonnull
+    @NonNull
     public String getTowerServer()              { return towerServer; }
     public String getTowerCredentialsId()       { return towerCredentialsId; }
-    @Nonnull
+    @NonNull
     public String getProject()                  { return project; }
     public Boolean getVerbose()                 { return verbose; }
     public Boolean getImportTowerLogs()         { return importTowerLogs; }
@@ -190,4 +190,3 @@ public class AnsibleTowerProjectSyncStep extends AbstractStepImpl {
         }
     }
 }
-
