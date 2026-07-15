@@ -24,11 +24,25 @@ For local development, use JDK 21 and Maven 3.9.6 or newer.
 
 ## Installation
 
-Install **Ansible Tower** from **Manage Jenkins → Plugins**, or upload a locally built `ansible-tower.hpi` from the plugin manager's advanced settings.
+1. Open **Manage Jenkins → Plugins**.
+2. Search the **Available plugins** tab for **Ansible Tower**.
+3. Install the plugin and restart Jenkins if requested.
+4. Alternatively, upload a locally built `ansible-tower.hpi` from the plugin manager's advanced settings.
 
 After installation, configure at least one controller under **Manage Jenkins → System → Ansible Tower**.
 
 ## Global configuration
+
+1. Open **Manage Jenkins → System**.
+2. Find the **Ansible Tower** section.
+3. Select **Add Tower Installation**.
+4. Enter the installation name, URL, API Base Path, credential, and TLS/debug options.
+5. Select **Test Connection**.
+6. Save the Jenkins system configuration after the test succeeds.
+
+![Ansible Tower global configuration](./docs/images/configuration-0.7.0.png)
+
+> The screenshot is from an earlier plugin release. Current releases also display the **API Base Path** selector used for Tower/AWX and AAP 2.5+ compatibility.
 
 Each configured installation has the following fields:
 
@@ -66,6 +80,14 @@ The plugin accepts these Jenkins credential types:
 
 ### Username with password
 
+To configure username/password authentication:
+
+1. Open **Manage Jenkins → Credentials**.
+2. Add a **Username with password** credential.
+3. Use a dedicated controller service account with only the required permissions.
+4. Select the new credential in the global Ansible Tower installation.
+5. Use **Test Connection** to validate it.
+
 When a username/password credential is selected, the plugin attempts authentication in this order:
 
 1. Create an OAuth token.
@@ -76,6 +98,15 @@ The account should be a dedicated service account with only the permissions requ
 
 ### Secret text bearer token
 
+To configure a pre-created bearer token:
+
+1. Create an OAuth access token for the Jenkins service account in Tower, AWX, or AAP.
+2. Copy the access token value when the controller displays it.
+3. Open **Manage Jenkins → Credentials**.
+4. Add a **Secret text** credential and paste the access token into **Secret**.
+5. Select the new credential in the global Ansible Tower installation.
+6. Use **Test Connection** to validate it.
+
 Store the actual OAuth access token value in a Jenkins **Secret text** credential. The plugin sends it as a bearer token and does not create or delete that externally managed token.
 
 Secret text credentials require the [Plain Credentials Plugin](https://plugins.jenkins.io/plain-credentials/).
@@ -85,6 +116,20 @@ Do not enter a token database ID or token record ID; Jenkins needs the access to
 ## Run a job or workflow template
 
 Freestyle projects provide an **Ansible Tower** build step. Pipeline jobs use `ansibleTower`.
+
+### Freestyle configuration
+
+1. Open or create a Freestyle project.
+2. Select **Configure**.
+3. Under **Build Steps**, select **Add build step → Ansible Tower**.
+4. Choose the configured Tower/AWX/AAP server and optional credential override.
+5. Select `job` or `workflow`, then enter the template name or numeric ID.
+6. Configure launch overrides and output import behavior as required.
+7. Save and run the project.
+
+![Run an Ansible Tower job from a Freestyle project](./docs/images/run_job_freestyle.png)
+
+### Pipeline configuration
 
 The minimum Pipeline configuration is `towerServer`, `towerCredentialsId`, `jobTemplate`, and `jobType`. `towerCredentialsId` may be an empty string to use the globally configured credential.
 
@@ -152,6 +197,19 @@ The legacy Boolean `importTowerLogs` option remains supported for compatibility,
 
 Freestyle projects provide **Ansible Tower Project Sync**. Pipeline jobs use `ansibleTowerProjectSync`:
 
+For a Freestyle project:
+
+1. Open the project configuration.
+2. Select **Add build step → Ansible Tower Project Sync**.
+3. Choose the Tower server and optional credential override.
+4. Enter the controller project name.
+5. Select output, color, failure, and async behavior.
+6. Save and run the project.
+
+![Synchronize an Ansible Tower project from Freestyle](./docs/images/project_sync_freestyle.png)
+
+Pipeline example:
+
 ```groovy
 def result = ansibleTowerProjectSync(
     towerServer: 'AAP UAT',
@@ -171,6 +229,19 @@ echo "Result: ${result.SYNC_RESULT}"
 ### Project revision
 
 Freestyle projects provide **Ansible Tower Project Revision**. Pipeline jobs use `ansibleTowerProjectRevision`:
+
+For a Freestyle project:
+
+1. Open the project configuration.
+2. Select **Add build step → Ansible Tower Project Revision**.
+3. Choose the Tower server and optional credential override.
+4. Enter the project name and desired SCM revision.
+5. Select failure and verbose behavior.
+6. Save and run the project.
+
+![Change an Ansible Tower project revision from Freestyle](./docs/images/project_revision_freestyle.png)
+
+Pipeline example:
 
 ```groovy
 ansibleTowerProjectRevision(
