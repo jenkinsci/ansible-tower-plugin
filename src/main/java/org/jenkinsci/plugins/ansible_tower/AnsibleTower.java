@@ -67,7 +67,7 @@ public class AnsibleTower extends Builder {
 		this.credential = credential;
 		this.scmBranch = scmBranch;
 		this.verbose = verbose;
-		this.importTowerLogs = importTowerLogs.toString();
+		this.importTowerLogs = normalizeImportTowerLogs(importTowerLogs);
 		this.removeColor = removeColor;
 		this.templateType = templateType;
 		this.importWorkflowChildLogs = importWorkflowChildLogs;
@@ -92,7 +92,7 @@ public class AnsibleTower extends Builder {
 		this.credential = credential;
 		this.scmBranch = scmBranch;
 		this.verbose = verbose;
-		this.importTowerLogs = importTowerLogs;
+		this.importTowerLogs = normalizeImportTowerLogs(importTowerLogs);
 		this.removeColor = removeColor;
 		this.templateType = templateType;
 		this.importWorkflowChildLogs = importWorkflowChildLogs;
@@ -142,15 +142,35 @@ public class AnsibleTower extends Builder {
 	@DataBoundSetter
 	public void setVerbose(Boolean verbose) { this.verbose = verbose; }
 	@DataBoundSetter
-	public void setImportTowerLogs(Boolean importTowerLogs) { this.importTowerLogs = importTowerLogs.toString(); }
-	@DataBoundSetter
-	public void setImportTowerLogs(String importTowerLogs) { this.importTowerLogs = importTowerLogs; }
+	public void setImportTowerLogs(Object importTowerLogs) {
+		this.importTowerLogs = normalizeImportTowerLogs(importTowerLogs);
+	}
 	@DataBoundSetter
 	public void setRemoveColor(Boolean removeColor) { this.removeColor = removeColor; }
 	@DataBoundSetter
 	public void setTemplateType(String templateType) { this.templateType = templateType; }
 	@DataBoundSetter
 	public void setImportWorkflowChildLogs(Boolean importWorkflowChildLogs) { this.importWorkflowChildLogs = importWorkflowChildLogs; }
+
+	static String normalizeImportTowerLogs(Object importTowerLogs) {
+		if (importTowerLogs == null) {
+			return "false";
+		}
+		if (importTowerLogs instanceof Boolean) {
+			return importTowerLogs.toString();
+		}
+		if (importTowerLogs instanceof String) {
+			String value = (String) importTowerLogs;
+			if (value.equals("false") || value.equals("true") || value.equals("vars") || value.equals("full")) {
+				return value;
+			}
+			throw new IllegalArgumentException(
+					"importTowerLogs must be one of: false, true, vars, full; received: " + value);
+		}
+		throw new IllegalArgumentException(
+				"importTowerLogs must be a Boolean, String, or null; received type: "
+						+ importTowerLogs.getClass().getName());
+	}
 
     @Override
     public boolean perform(AbstractBuild<?,?> build, Launcher launcher, BuildListener listener)

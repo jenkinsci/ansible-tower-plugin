@@ -4,12 +4,16 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.instanceOf;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.notNullValue;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
+import groovy.lang.Binding;
+import groovy.lang.GroovyShell;
 import hudson.model.FreeStyleProject;
 import hudson.EnvVars;
 import java.io.ByteArrayOutputStream;
 import java.io.PrintStream;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Properties;
 import jenkins.model.Jenkins;
@@ -74,6 +78,62 @@ public class PluginCompatibilityTest {
     }
 
     @Test
+    public void freestyleImportTowerLogsAcceptsJobDslValues() {
+        AnsibleTower builder = freestyleBuilder("false");
+
+        builder.setImportTowerLogs(true);
+        assertThat(builder.getImportTowerLogs(), is("true"));
+        builder.setImportTowerLogs(false);
+        assertThat(builder.getImportTowerLogs(), is("false"));
+        for (String value : List.of("false", "true", "vars", "full")) {
+            builder.setImportTowerLogs(value);
+            assertThat(builder.getImportTowerLogs(), is(value));
+        }
+        builder.setImportTowerLogs(null);
+        assertThat(builder.getImportTowerLogs(), is("false"));
+
+        assertThrows(IllegalArgumentException.class, () -> builder.setImportTowerLogs("verbose"));
+        assertThrows(IllegalArgumentException.class, () -> builder.setImportTowerLogs(1));
+    }
+
+    @Test
+    public void freestyleImportTowerLogsAcceptsBooleanThroughGroovyMethodResolution() {
+        AnsibleTower builder = freestyleBuilder("false");
+        Binding binding = new Binding();
+        binding.setVariable("builder", builder);
+
+        new GroovyShell(binding).evaluate("builder.setImportTowerLogs(true)");
+
+        assertThat(builder.getImportTowerLogs(), is("true"));
+    }
+
+    @Test
+    public void freestyleImportTowerLogsExposesOneUnambiguousDataBoundSetter() {
+        List<java.lang.reflect.Method> setters = Arrays.stream(AnsibleTower.class.getMethods())
+                .filter(method -> method.getName().equals("setImportTowerLogs"))
+                .filter(method -> method.isAnnotationPresent(org.kohsuke.stapler.DataBoundSetter.class))
+                .toList();
+
+        assertThat(setters.size(), is(1));
+        assertThat(setters.get(0).getParameterTypes()[0], is(Object.class));
+    }
+
+    @Test
+    public void legacyFreestyleConstructorDefaultsNullImportTowerLogs() {
+        assertThat(freestyleBuilder((Boolean) null).getImportTowerLogs(), is("false"));
+    }
+
+    private static AnsibleTower freestyleBuilder(Boolean importTowerLogs) {
+        return new AnsibleTower("tower", "template", "credential", "run", "", "", "", "", "", "", "",
+                false, importTowerLogs, false, "job", false);
+    }
+
+    private static AnsibleTower freestyleBuilder(String importTowerLogs) {
+        return new AnsibleTower("tower", "template", "credential", "run", "", "", "", "", "", "", "",
+                false, importTowerLogs, false, "job", false);
+    }
+
+    @Test
     public void runnerWritesMilestoneAndPreservesFailureForPipelineBoundary(JenkinsRule jenkinsRule) {
         AnsibleTowerGlobalConfig.get().setTowerInstallation(List.of());
         ByteArrayOutputStream output = new ByteArrayOutputStream();
@@ -112,6 +172,7 @@ public class PluginCompatibilityTest {
         FreeStyleProject project = jenkinsRule.createFreeStyleProject();
         project.getBuildersList().add(new AnsibleTowerProjectSyncFreestyle(
                 "tower", "credential", "project", true, true, false));
+        project.getBuildersList().add(freestyleBuilder("full"));
         project = jenkinsRule.configRoundtrip(project);
         AnsibleTowerProjectSyncFreestyle restored = project.getBuildersList()
                 .get(AnsibleTowerProjectSyncFreestyle.class);
@@ -121,6 +182,8 @@ public class PluginCompatibilityTest {
         assertThat(restored.getVerbose(), is(true));
         assertThat(restored.getImportTowerLogs(), is(true));
         assertThat(restored.getRemoveColor(), is(false));
+        AnsibleTower restoredJob = project.getBuildersList().get(AnsibleTower.class);
+        assertThat(restoredJob.getImportTowerLogs(), is("full"));
 
         String xml = Jenkins.XSTREAM2.toXML(installation);
         TowerInstallation restoredInstallation = (TowerInstallation) Jenkins.XSTREAM2.fromXML(xml);
