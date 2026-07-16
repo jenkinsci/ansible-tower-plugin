@@ -530,6 +530,7 @@ public class TowerConnector implements Serializable {
             Integer.parseInt(idToCheck);
             // We got an ID so lets see if we can load that item
             HttpResponse response = makeRequest(GET, api_endpoint + idToCheck +"/");
+            requireSuccessfulLookup(response, api_endpoint + idToCheck + "/");
             JSONObject responseObject;
             try {
                 responseObject = JSONObject.fromObject(EntityUtils.toString(response.getEntity()));
@@ -549,6 +550,7 @@ public class TowerConnector implements Serializable {
             } catch(UnsupportedEncodingException e) {
                 throw new AnsibleTowerException("Unable to encode item name for lookup");
             }
+            requireSuccessfulLookup(response, api_endpoint + "?name=<redacted>");
 
             JSONObject responseObject;
             try {
@@ -571,6 +573,15 @@ public class TowerConnector implements Serializable {
                 JSONObject foundItem = (JSONObject) responseObject.getJSONArray("results").get(0);
                 return foundItem;
             }
+        }
+    }
+
+    private void requireSuccessfulLookup(HttpResponse response, String endpoint) throws AnsibleTowerException {
+        int statusCode = response.getStatusLine().getStatusCode();
+        if(statusCode != 200) {
+            EntityUtils.consumeQuietly(response.getEntity());
+            throw new AnsibleTowerException("GET " + TowerLogger.sanitizeEndpoint(buildEndpoint(endpoint))
+                + " returned HTTP " + statusCode);
         }
     }
 

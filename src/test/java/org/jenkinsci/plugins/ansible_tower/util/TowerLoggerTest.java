@@ -127,6 +127,17 @@ class TowerLoggerTest {
         assertThat(output.toString(StandardCharsets.UTF_8).contains("secret-value"), is(false));
     }
 
+    @Test
+    void unexpectedFailuresDoNotCopyRuntimeMessagesIntoSystemDiagnostics() {
+        String detail = TowerLogger.reportUnexpected("template lookup",
+            new IllegalArgumentException("<html>private upstream response</html>"));
+
+        assertThat(detail.contains("<html>"), is(false));
+        assertThat(handler.record.getMessage().contains("<html>"), is(false));
+        assertThat(handler.record.getThrown().getMessage(),
+            is("IllegalArgumentException during template lookup"));
+    }
+
     private static class RecordingHandler extends Handler {
         private LogRecord record;
 

@@ -166,7 +166,7 @@ public class AnsibleTowerProjectRevisionStep extends AbstractStepImpl {
                 );
             } catch(RuntimeException failure) {
                 throw new AbortException(TowerLogger.reportUnexpected(
-                    listener.getLogger(), "Ansible Tower project revision operation", failure));
+                    "Ansible Tower project revision operation", failure));
             }
             if(!runResult && throwExceptionWhenFail) {
                 throw new AbortException(runner.getLastFailureMessage());

@@ -309,7 +309,7 @@ public class AnsibleTowerStep extends AbstractStepImpl {
                 );
             } catch(RuntimeException failure) {
                 throw new AbortException(TowerLogger.reportUnexpected(
-                    listener.getLogger(), "Ansible Tower job template operation", failure));
+                    "Ansible Tower job template operation", failure));
             }
             if(!runResult && throwExceptionWhenFail) {
                 throw new AbortException(runner.getLastFailureMessage());

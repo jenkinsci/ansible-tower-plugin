@@ -53,10 +53,6 @@ public class AnsibleTowerRunner {
     ) {
         milestone(logger, "Starting job template operation: server=" + towerServer
             + ", template=" + jobTemplate + ", templateType=" + templateType);
-        if (verbose) {
-            logger.println("Beginning Ansible Tower Run on " + towerServer);
-        }
-
         AnsibleTowerGlobalConfig myConfig = new AnsibleTowerGlobalConfig();
         TowerInstallation towerConfigToRunOn = myConfig.getTowerInstallationByName(towerServer);
         if (towerConfigToRunOn == null) {
@@ -346,10 +342,6 @@ public class AnsibleTowerRunner {
                                FilePath ws, Run<?, ?> run, Properties towerResults, boolean async) {
 
         milestone(logger, "Starting project sync: server=" + towerServer + ", project=" + projectName);
-        if (verbose) {
-            logger.println("Beginning Ansible Tower Project Sync on " + towerServer + " for " + projectName);
-        }
-
         // Get our Tower connector
         AnsibleTowerGlobalConfig myConfig = new AnsibleTowerGlobalConfig();
         TowerInstallation towerConfigToRunOn = myConfig.getTowerInstallationByName(towerServer);
@@ -506,10 +498,6 @@ public class AnsibleTowerRunner {
                                    EnvVars envVars, FilePath ws, Run<?, ?> run, Properties towerResults) {
 
         milestone(logger, "Starting project revision: server=" + towerServer + ", project=" + projectName);
-        if (verbose) {
-            logger.println("Beginning Ansible Tower Project Revision on " + towerServer + " for " + projectName);
-        }
-
         // Get our Tower connector
         AnsibleTowerGlobalConfig myConfig = new AnsibleTowerGlobalConfig();
         TowerInstallation towerConfigToRunOn = myConfig.getTowerInstallationByName(towerServer);

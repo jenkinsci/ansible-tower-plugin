@@ -20,6 +20,7 @@ import org.apache.http.conn.params.ConnManagerParams;
 import org.hamcrest.CoreMatchers;
 import org.hamcrest.MatcherAssert;
 import org.junit.jupiter.api.Test;
+import org.jenkinsci.plugins.ansible_tower.exceptions.AnsibleTowerException;
 
 class TowerConnectorTest {
 
@@ -127,6 +128,36 @@ class TowerConnectorTest {
             MatcherAssert.assertThat(console, CoreMatchers.containsString("name=<redacted>"));
             MatcherAssert.assertThat(console.contains("private-template"), CoreMatchers.is(false));
             MatcherAssert.assertThat(console.contains("test-token"), CoreMatchers.is(false));
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    public void htmlGatewayFailure_isNotParsedOrCopiedIntoConsoleException() throws Exception {
+        String html = "<html><style>secret-route-style</style><h1>Application is not available</h1></html>";
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/api/v2/ping/", exchange -> respond(exchange, "{\"version\":\"3.8.0\"}"));
+        server.createContext("/api/v2/workflow_job_templates/8/",
+            exchange -> respond(exchange, 503, html));
+        server.start();
+        try {
+            ByteArrayOutputStream output = new ByteArrayOutputStream();
+            TowerConnector connector = new TowerConnector(
+                "http://127.0.0.1:" + server.getAddress().getPort(), null, null,
+                "test-token", false, false);
+            connector.setConsole(new PrintStream(output, true, StandardCharsets.UTF_8));
+
+            AnsibleTowerException failure = org.junit.jupiter.api.Assertions.assertThrows(
+                AnsibleTowerException.class,
+                () -> connector.getJobTemplate("8", TowerConnector.WORKFLOW_TEMPLATE_TYPE));
+
+            MatcherAssert.assertThat(failure.getMessage(), CoreMatchers.containsString("returned HTTP 503"));
+            MatcherAssert.assertThat(failure.getMessage().contains("<html>"), CoreMatchers.is(false));
+            String console = output.toString(StandardCharsets.UTF_8);
+            MatcherAssert.assertThat(console, CoreMatchers.containsString("httpStatus=503"));
+            MatcherAssert.assertThat(console.contains("<html>"), CoreMatchers.is(false));
+            MatcherAssert.assertThat(console.contains("secret-route-style"), CoreMatchers.is(false));
         } finally {
             server.stop(0);
         }

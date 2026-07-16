@@ -102,14 +102,14 @@ public class TowerLogger implements Serializable {
         log(Level.INFO, message);
     }
 
-    public static String reportUnexpected(PrintStream console, String operation, RuntimeException failure) {
+    public static String reportUnexpected(String operation, RuntimeException failure) {
         String detail = operation + " failed unexpectedly: exception="
-            + failure.getClass().getSimpleName() + ", message=" + sanitizeMessage(failure.getMessage());
-        LOGGER.log(Level.SEVERE, PREFIX + detail, failure);
-        if(console != null) {
-            console.println(PREFIX + "ERROR: " + detail
-                + ". See the Jenkins System Log for the full stack trace.");
-        }
+            + failure.getClass().getSimpleName()
+            + ". See the Jenkins System Log for the sanitized stack trace.";
+        RuntimeException sanitizedFailure = new RuntimeException(
+            failure.getClass().getSimpleName() + " during " + operation);
+        sanitizedFailure.setStackTrace(failure.getStackTrace());
+        LOGGER.log(Level.SEVERE, PREFIX + detail, sanitizedFailure);
         return detail;
     }
 

@@ -191,7 +191,7 @@ public class AnsibleTowerProjectSyncStep extends AbstractStepImpl {
                 );
             } catch(RuntimeException failure) {
                 throw new AbortException(TowerLogger.reportUnexpected(
-                    listener.getLogger(), "Ansible Tower project sync operation", failure));
+                    "Ansible Tower project sync operation", failure));
             }
             if(!runResult && throwExceptionWhenFail) {
                 throw new AbortException(runner.getLastFailureMessage());
