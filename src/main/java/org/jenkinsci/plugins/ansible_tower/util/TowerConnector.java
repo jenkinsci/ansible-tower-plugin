@@ -109,6 +109,7 @@ public class TowerConnector implements Serializable {
     public void setDebug(boolean debug) {
         logger.setDebugging(debug);
     }
+    public void setConsole(PrintStream console) { logger.setConsole(console); }
     public void setRemoveColor(boolean removeColor) { this.removeColor = removeColor;}
     public void setGetWorkflowChildLogs(boolean importChildWorkflowLogs) { this.importChildWorkflowLogs = importChildWorkflowLogs; }
     public void setGetFullLogs(boolean getFullLogs) { this.getFullLogs = getFullLogs; }
@@ -361,22 +362,39 @@ public class TowerConnector implements Serializable {
 
         DefaultHttpClient httpClient = getHttpClient();
         HttpResponse response;
+        long requestStarted = System.nanoTime();
         try {
             response = httpClient.execute(request);
         } catch(Exception e) {
+            long durationMs = (System.nanoTime() - requestStarted) / 1_000_000L;
+            String failure = "HTTP request failed: method=" + getMethodName(requestType)
+                + ", endpoint=" + TowerLogger.sanitizeEndpoint(buildEndpoint(endpoint))
+                + ", exception=" + e.getClass().getSimpleName() + ", durationMs=" + durationMs;
+            logger.consoleError(failure);
+            if(requestType == POST && isOutcomeUncertainEndpoint(endpoint)) {
+                logger.consoleWarning(unknownOutcomeMessage(endpoint,
+                    "Jenkins did not receive a response"));
+            }
             if(isTransientTransportFailure(e)) {
                 throw new AnsibleTowerTransientException("Transient Tower transport failure: method="
-                    + getMethodName(requestType) + ", endpoint=" + buildEndpoint(endpoint)
+                    + getMethodName(requestType) + ", endpoint="
+                    + TowerLogger.sanitizeEndpoint(buildEndpoint(endpoint))
                     + ", cause=" + e.getClass().getSimpleName(), e);
             }
             throw new AnsibleTowerException("Unable to make tower request: "+ e.getMessage());
         }
 
         int statusCode = response.getStatusLine().getStatusCode();
+        long durationMs = (System.nanoTime() - requestStarted) / 1_000_000L;
         String responseMetadata = "HTTP request completed: method=" + getMethodName(requestType)
-            + ", endpoint=" + buildEndpoint(endpoint) + ", httpStatus=" + statusCode;
+            + ", endpoint=" + TowerLogger.sanitizeEndpoint(buildEndpoint(endpoint))
+            + ", httpStatus=" + statusCode + ", durationMs=" + durationMs;
         if(statusCode >= 400) {
-            logger.warning(responseMetadata);
+            logger.consoleError(responseMetadata);
+            if(requestType == POST && isOutcomeUncertainEndpoint(endpoint) && isTransientGatewayStatus(statusCode)) {
+                logger.consoleWarning(unknownOutcomeMessage(endpoint,
+                    "Jenkins received HTTP " + statusCode));
+            }
         } else {
             logger.debug(responseMetadata);
         }
@@ -402,6 +420,18 @@ public class TowerConnector implements Serializable {
         }
 
         return response;
+    }
+
+    static boolean isOutcomeUncertainEndpoint(String endpoint) {
+        return endpoint != null && (endpoint.contains("/launch/") || endpoint.endsWith("/update/"));
+    }
+
+    static String unknownOutcomeMessage(String endpoint, String responseFailure) {
+        boolean launch = endpoint != null && endpoint.contains("/launch/");
+        String operation = launch ? "launch" : "project sync";
+        String resource = launch ? "job" : "sync";
+        return "Tower " + operation + " outcome is unknown; the controller may have created the "
+            + resource + ", but " + responseFailure + ". Automatic retry was not performed.";
     }
 
     static boolean isTransientTransportFailure(Throwable failure) {

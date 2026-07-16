@@ -5,6 +5,9 @@ import static org.hamcrest.CoreMatchers.nullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
 
 import java.util.logging.Handler;
+import java.io.ByteArrayOutputStream;
+import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
 import java.util.logging.Level;
 import java.util.logging.LogRecord;
 import java.util.logging.Logger;
@@ -85,6 +88,43 @@ class TowerLoggerTest {
         TowerLogger.writeMessage("connection test");
 
         assertThat(handler.record.getLevel(), is(Level.INFO));
+    }
+
+    @Test
+    void consoleMessages_areVisibleWithoutDebuggingAndUseConsistentSeverity() {
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        TowerLogger towerLogger = new TowerLogger(new PrintStream(output, true, StandardCharsets.UTF_8));
+
+        towerLogger.consoleInfo("resolving template");
+        towerLogger.consoleWarning("gateway unavailable");
+        towerLogger.consoleError("lookup failed");
+
+        String console = output.toString(StandardCharsets.UTF_8);
+        assertThat(console.contains("[Ansible-Tower] INFO: resolving template"), is(true));
+        assertThat(console.contains("[Ansible-Tower] WARNING: gateway unavailable"), is(true));
+        assertThat(console.contains("[Ansible-Tower] ERROR: lookup failed"), is(true));
+    }
+
+    @Test
+    void sanitizers_removeQueryValuesAndCredentialMaterial() {
+        assertThat(TowerLogger.sanitizeEndpoint(
+            "/api/controller/v2/job_templates/?name=private-template&page=2"),
+            is("/api/controller/v2/job_templates/?name=<redacted>&page=<redacted>"));
+        assertThat(TowerLogger.sanitizeMessage(
+            "authorization=Bearer-secret password=hunter2 token=abc failure"),
+            is("authorization=<redacted> password=<redacted> token=<redacted> failure"));
+    }
+
+    @Test
+    void consoleErrorsAlsoSanitizeTheSystemLogRecord() {
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        TowerLogger towerLogger = new TowerLogger(new PrintStream(output, true, StandardCharsets.UTF_8));
+
+        towerLogger.consoleError("request failed token=secret-value");
+
+        assertThat(handler.record.getParameters(),
+            is(new Object[] {"[Ansible-Tower] ", "request failed token=<redacted>"}));
+        assertThat(output.toString(StandardCharsets.UTF_8).contains("secret-value"), is(false));
     }
 
     private static class RecordingHandler extends Handler {

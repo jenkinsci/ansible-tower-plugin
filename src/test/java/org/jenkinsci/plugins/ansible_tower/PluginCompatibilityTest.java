@@ -6,7 +6,12 @@ import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.notNullValue;
 
 import hudson.model.FreeStyleProject;
+import hudson.EnvVars;
+import java.io.ByteArrayOutputStream;
+import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Properties;
 import jenkins.model.Jenkins;
 import org.apache.http.client.HttpClient;
 import org.jenkinsci.plugins.ansible_tower.util.TowerConnector;
@@ -64,6 +69,25 @@ public class PluginCompatibilityTest {
         assertThat(revision.getRevision(), is("main"));
         assertThat(revision.getVerbose(), is(true));
         assertThat(revision.getThrowExceptionWhenFail(), is(false));
+    }
+
+    @Test
+    public void runnerWritesMilestoneAndPreservesFailureForPipelineBoundary(JenkinsRule jenkinsRule) {
+        AnsibleTowerGlobalConfig.get().setTowerInstallation(List.of());
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        AnsibleTowerRunner runner = new AnsibleTowerRunner();
+
+        boolean result = runner.runJobTemplate(
+            new PrintStream(output, true, StandardCharsets.UTF_8), "missing-tower", "", "deploy", "run",
+            "", "", "", "", "", "", "", false, "false", false, new EnvVars(),
+            "job", false, null, null, new Properties(), false);
+
+        assertThat(result, is(false));
+        assertThat(runner.getLastFailureMessage(),
+            is("Ansible Tower server missing-tower does not exist in Jenkins configuration"));
+        String console = output.toString(StandardCharsets.UTF_8);
+        assertThat(console.contains("[Ansible-Tower] INFO: Starting job template operation"), is(true));
+        assertThat(console.contains("[Ansible-Tower] ERROR: Ansible Tower server missing-tower"), is(true));
     }
 
     @Test

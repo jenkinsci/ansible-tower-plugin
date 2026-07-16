@@ -14,6 +14,7 @@ import hudson.model.TaskListener;
 import hudson.util.ListBoxModel;
 import org.jenkinsci.plugins.ansible_tower.util.GetUserPageCredentials;
 import org.jenkinsci.plugins.ansible_tower.util.TowerInstallation;
+import org.jenkinsci.plugins.ansible_tower.util.TowerLogger;
 import org.jenkinsci.plugins.workflow.steps.AbstractStepDescriptorImpl;
 import org.jenkinsci.plugins.workflow.steps.AbstractStepImpl;
 import org.jenkinsci.plugins.workflow.steps.AbstractSynchronousNonBlockingStepExecution;
@@ -155,14 +156,20 @@ public class AnsibleTowerProjectRevisionStep extends AbstractStepImpl {
             boolean throwExceptionWhenFail = true;
             if(step.getThrowExceptionWhenFail() != null) { throwExceptionWhenFail = step.getThrowExceptionWhenFail(); }
             Properties map = new Properties();
-            boolean runResult = runner.projectRevision(
-                    listener.getLogger(), step.getTowerServer(), step.getTowerCredentialsId(),
-                    project, revision,
-                    verbose,
-                    envVars, ws, run, map
-            );
+            boolean runResult;
+            try {
+                runResult = runner.projectRevision(
+                        listener.getLogger(), step.getTowerServer(), step.getTowerCredentialsId(),
+                        project, revision,
+                        verbose,
+                        envVars, ws, run, map
+                );
+            } catch(RuntimeException failure) {
+                throw new AbortException(TowerLogger.reportUnexpected(
+                    listener.getLogger(), "Ansible Tower project revision operation", failure));
+            }
             if(!runResult && throwExceptionWhenFail) {
-                throw new AbortException("Ansible Tower Project Revision build step failed");
+                throw new AbortException(runner.getLastFailureMessage());
             }
             return map;
         }

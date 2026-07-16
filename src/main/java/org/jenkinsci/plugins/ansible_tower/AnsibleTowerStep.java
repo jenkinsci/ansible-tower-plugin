@@ -12,6 +12,7 @@ import hudson.*;
 import hudson.util.ListBoxModel;
 import org.jenkinsci.plugins.ansible_tower.util.GetUserPageCredentials;
 import org.jenkinsci.plugins.ansible_tower.util.TowerInstallation;
+import org.jenkinsci.plugins.ansible_tower.util.TowerLogger;
 import org.jenkinsci.plugins.workflow.steps.AbstractStepImpl;
 import org.jenkinsci.plugins.workflow.steps.AbstractSynchronousNonBlockingStepExecution;
 import org.jenkinsci.plugins.workflow.steps.StepContextParameter;
@@ -299,13 +300,19 @@ public class AnsibleTowerStep extends AbstractStepImpl {
             boolean async = false;
             if(step.getAsync() != null) { async = step.getAsync(); }
             Properties map = new Properties();
-            boolean runResult = runner.runJobTemplate(
-                    listener.getLogger(), step.getTowerServer(), towerCredentialsId, step.getJobTemplate(), jobType, extraVars,
-                    limit, tags, skipTags, inventory, credential, scmBranch, verbose, towerLogLevel, removeColor, envVars,
-                    templateType, importWorkflowChildLogs, ws, run, map, async
-            );
+            boolean runResult;
+            try {
+                runResult = runner.runJobTemplate(
+                        listener.getLogger(), step.getTowerServer(), towerCredentialsId, step.getJobTemplate(), jobType, extraVars,
+                        limit, tags, skipTags, inventory, credential, scmBranch, verbose, towerLogLevel, removeColor, envVars,
+                        templateType, importWorkflowChildLogs, ws, run, map, async
+                );
+            } catch(RuntimeException failure) {
+                throw new AbortException(TowerLogger.reportUnexpected(
+                    listener.getLogger(), "Ansible Tower job template operation", failure));
+            }
             if(!runResult && throwExceptionWhenFail) {
-                throw new AbortException("Ansible Tower build step failed");
+                throw new AbortException(runner.getLastFailureMessage());
             }
             return map;
         }
