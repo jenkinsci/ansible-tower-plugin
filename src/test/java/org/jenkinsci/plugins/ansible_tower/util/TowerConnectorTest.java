@@ -2,6 +2,8 @@ package org.jenkinsci.plugins.ansible_tower.util;
 
 import java.io.IOException;
 import java.io.OutputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.PrintStream;
 import java.net.InetSocketAddress;
 import java.net.SocketTimeoutException;
 import java.nio.charset.StandardCharsets;
@@ -18,6 +20,7 @@ import org.apache.http.conn.params.ConnManagerParams;
 import org.hamcrest.CoreMatchers;
 import org.hamcrest.MatcherAssert;
 import org.junit.jupiter.api.Test;
+import org.jenkinsci.plugins.ansible_tower.exceptions.AnsibleTowerException;
 
 class TowerConnectorTest {
 
@@ -91,11 +94,124 @@ class TowerConnectorTest {
     }
 
     private static void respond(HttpExchange exchange, String body) throws IOException {
+        respond(exchange, 200, body);
+    }
+
+    private static void respond(HttpExchange exchange, int status, String body) throws IOException {
         byte[] response = body.getBytes(StandardCharsets.UTF_8);
-        exchange.sendResponseHeaders(200, response.length);
+        exchange.sendResponseHeaders(status, response.length);
         try(OutputStream output = exchange.getResponseBody()) {
             output.write(response);
         }
+    }
+
+    @Test
+    public void failedGet_writesSanitizedOperationalMetadataToBuildConsole() throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/api/v2/ping/", exchange -> respond(exchange, "{\"version\":\"3.8.0\"}"));
+        server.createContext("/api/v2/job_templates/", exchange -> respond(exchange, 502, "gateway failure"));
+        server.start();
+        try {
+            ByteArrayOutputStream output = new ByteArrayOutputStream();
+            TowerConnector connector = new TowerConnector(
+                "http://127.0.0.1:" + server.getAddress().getPort(), null, null,
+                "test-token", false, false);
+            connector.setConsole(new PrintStream(output, true, StandardCharsets.UTF_8));
+
+            connector.makeRequest(TowerConnector.GET,
+                "/job_templates/?name=private-template", null, false);
+
+            String console = output.toString(StandardCharsets.UTF_8);
+            MatcherAssert.assertThat(console, CoreMatchers.containsString("method=GET"));
+            MatcherAssert.assertThat(console, CoreMatchers.containsString(
+                "url=http://127.0.0.1:" + server.getAddress().getPort()
+                    + "/api/v2/job_templates/?name=<redacted>"));
+            MatcherAssert.assertThat(console, CoreMatchers.containsString("httpStatus=502"));
+            MatcherAssert.assertThat(console, CoreMatchers.containsString("durationMs="));
+            MatcherAssert.assertThat(console, CoreMatchers.containsString("name=<redacted>"));
+            MatcherAssert.assertThat(console.contains("private-template"), CoreMatchers.is(false));
+            MatcherAssert.assertThat(console.contains("test-token"), CoreMatchers.is(false));
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    public void nonSuccessLookupResponses_areNotParsedOrCopiedIntoConsoleException() throws Exception {
+        String html = "<html><style>secret-route-style</style><h1>Application is not available</h1></html>";
+        AtomicInteger responseStatus = new AtomicInteger(503);
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/api/v2/ping/", exchange -> respond(exchange, "{\"version\":\"3.8.0\"}"));
+        server.createContext("/api/v2/workflow_job_templates/8/",
+            exchange -> respond(exchange, responseStatus.get(), html));
+        server.start();
+        try {
+            int[] representativeStatuses = {400, 401, 403, 404, 429, 500, 502, 503, 504};
+            for(int status : representativeStatuses) {
+                responseStatus.set(status);
+                ByteArrayOutputStream output = new ByteArrayOutputStream();
+                TowerConnector connector = new TowerConnector(
+                    "http://127.0.0.1:" + server.getAddress().getPort(), null, null,
+                    "test-token", false, false);
+                connector.setConsole(new PrintStream(output, true, StandardCharsets.UTF_8));
+
+                AnsibleTowerException failure = org.junit.jupiter.api.Assertions.assertThrows(
+                    AnsibleTowerException.class,
+                    () -> connector.getJobTemplate("8", TowerConnector.WORKFLOW_TEMPLATE_TYPE));
+
+                MatcherAssert.assertThat(failure.getMessage().contains("<html>"), CoreMatchers.is(false));
+                MatcherAssert.assertThat(failure.getMessage().contains("secret-route-style"), CoreMatchers.is(false));
+                String console = output.toString(StandardCharsets.UTF_8);
+                MatcherAssert.assertThat(console, CoreMatchers.containsString("httpStatus=" + status));
+                MatcherAssert.assertThat(console.contains("<html>"), CoreMatchers.is(false));
+                MatcherAssert.assertThat(console.contains("secret-route-style"), CoreMatchers.is(false));
+            }
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    public void transientLaunchResponse_warnsThatOutcomeIsUnknownWithoutLoggingBody() throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/api/v2/ping/", exchange -> respond(exchange, "{\"version\":\"3.8.0\"}"));
+        server.createContext("/api/v2/job_templates/12/launch/",
+            exchange -> respond(exchange, 502, "gateway failure"));
+        server.start();
+        try {
+            ByteArrayOutputStream output = new ByteArrayOutputStream();
+            TowerConnector connector = new TowerConnector(
+                "http://127.0.0.1:" + server.getAddress().getPort(), null, null,
+                "test-token", false, false);
+            connector.setConsole(new PrintStream(output, true, StandardCharsets.UTF_8));
+            JSONObject body = new JSONObject();
+            body.put("extra_vars", "TOP_SECRET_VALUE");
+
+            connector.makeRequest(TowerConnector.POST,
+                "/job_templates/12/launch/", body, false);
+
+            String console = output.toString(StandardCharsets.UTF_8);
+            MatcherAssert.assertThat(console, CoreMatchers.containsString("method=POST"));
+            MatcherAssert.assertThat(console, CoreMatchers.containsString(
+                "url=http://127.0.0.1:" + server.getAddress().getPort()
+                    + "/api/v2/job_templates/12/launch/"));
+            MatcherAssert.assertThat(console, CoreMatchers.containsString("httpStatus=502"));
+            MatcherAssert.assertThat(console, CoreMatchers.containsString("launch outcome is unknown"));
+            MatcherAssert.assertThat(console, CoreMatchers.containsString("Automatic retry was not performed"));
+            MatcherAssert.assertThat(console.contains("TOP_SECRET_VALUE"), CoreMatchers.is(false));
+            MatcherAssert.assertThat(console.contains("test-token"), CoreMatchers.is(false));
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    public void projectSyncPost_isClassifiedAsHavingAnUncertainOutcome() {
+        MatcherAssert.assertThat(
+            TowerConnector.isOutcomeUncertainEndpoint("/projects/12/update/"), CoreMatchers.is(true));
+        MatcherAssert.assertThat(
+            TowerConnector.unknownOutcomeMessage("/projects/12/update/", "Jenkins received HTTP 503"),
+            CoreMatchers.containsString("project sync outcome is unknown"));
     }
 
     @Test

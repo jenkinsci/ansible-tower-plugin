@@ -12,6 +12,7 @@ import hudson.model.Run;
 import jenkins.model.Jenkins;
 import net.sf.json.JSONObject;
 import org.jenkinsci.plugins.ansible_tower.exceptions.AnsibleTowerException;
+import org.jenkinsci.plugins.ansible_tower.exceptions.ConsoleDiagnosedException;
 import org.jenkinsci.plugins.ansible_tower.util.*;
 import org.jenkinsci.plugins.envinject.service.EnvInjectActionSetter;
 
@@ -20,6 +21,35 @@ import java.util.*;
 
 public class AnsibleTowerRunner {
     private TowerJob myJob = null;
+    private String lastFailureMessage = "Ansible Tower operation failed";
+
+    public String getLastFailureMessage() { return lastFailureMessage; }
+
+    private boolean fail(PrintStream console, String message) {
+        lastFailureMessage = TowerLogger.sanitizeMessage(message);
+        console.println("[Ansible-Tower] ERROR: " + lastFailureMessage);
+        return false;
+    }
+
+    private boolean failOperation(PrintStream console, String outcome, AnsibleTowerException failure) {
+        String message = hasConsoleDiagnostics(failure)
+            ? outcome
+            : outcome + ": " + failure.getMessage();
+        return fail(console, message);
+    }
+
+    static boolean hasConsoleDiagnostics(Throwable failure) {
+        Throwable current = failure;
+        while(current != null) {
+            if(current instanceof ConsoleDiagnosedException) { return true; }
+            current = current.getCause();
+        }
+        return false;
+    }
+
+    private void milestone(PrintStream console, String message) {
+        console.println("[Ansible-Tower] INFO: " + TowerLogger.sanitizeMessage(message));
+    }
 
     public boolean runJobTemplate(
             PrintStream logger, String towerServer, String towerCredentialsId, String jobTemplate, String jobType,
@@ -38,15 +68,12 @@ public class AnsibleTowerRunner {
             boolean verbose, String importTowerLogs, boolean removeColor, EnvVars envVars, String templateType,
             boolean importWorkflowChildLogs, FilePath ws, Run<?, ?> run, Properties towerResults, boolean async
     ) {
-        if (verbose) {
-            logger.println("Beginning Ansible Tower Run on " + towerServer);
-        }
-
+        milestone(logger, "Starting job template operation: server=" + towerServer
+            + ", template=" + jobTemplate + ", templateType=" + templateType);
         AnsibleTowerGlobalConfig myConfig = new AnsibleTowerGlobalConfig();
         TowerInstallation towerConfigToRunOn = myConfig.getTowerInstallationByName(towerServer);
         if (towerConfigToRunOn == null) {
-            logger.println("ERROR: Ansible tower server " + towerServer + " does not exist in Ansible Tower configuration");
-            return false;
+            return fail(logger, "Ansible Tower server " + towerServer + " does not exist in Jenkins configuration");
         }
 
         if (towerCredentialsId != null && !towerCredentialsId.equals("")) {
@@ -58,18 +85,17 @@ public class AnsibleTowerRunner {
         }
 
         TowerConnector myTowerConnection = towerConfigToRunOn.getTowerConnector();
+        myTowerConnection.setConsole(logger);
         this.myJob = new TowerJob(myTowerConnection);
         try {
             this.myJob.setTemplateType(templateType);
         } catch (AnsibleTowerException e) {
-            logger.println("ERROR: " + e);
-            return false;
+            return fail(logger, "Invalid template type: " + e.getMessage());
         }
 
         // Check the import logs settings
         if (!(importTowerLogs.matches("false") || importTowerLogs.matches("true") || importTowerLogs.matches("vars") || importTowerLogs.matches("full"))) {
-            logger.println("ERROR: Import Tower Logs must be one of (false, true, vars or full)");
-            return false;
+            return fail(logger, "Import Tower Logs must be one of false, true, vars, or full");
         }
 
         // If they came in empty then set them to null so that we don't pass a nothing through
@@ -113,7 +139,7 @@ public class AnsibleTowerRunner {
                 logger.println("Expanded job template to " + expandedJobTemplate);
             }
             if (expandedExtraVars != null && !expandedExtraVars.equals(extraVars)) {
-                logger.println("Expanded extra vars to " + expandedExtraVars);
+                logger.println("Expanded extra vars from the Jenkins environment");
             }
             if (expandedLimit != null && !expandedLimit.equals(limit)) {
                 logger.println("Expanded limit to " + expandedLimit);
@@ -128,7 +154,7 @@ public class AnsibleTowerRunner {
                 logger.println("Expanded inventory to " + expandedInventory);
             }
             if (expandedCredential != null && !expandedCredential.equals(credential)) {
-                logger.println("Expanded credentials to " + expandedCredential);
+                logger.println("Expanded launch credential reference from the Jenkins environment");
             }
             if (expandedScmBranch != null && !expandedScmBranch.equals(scmBranch)) {
                 logger.println("Expanded scmBranch to " + expandedScmBranch);
@@ -147,15 +173,17 @@ public class AnsibleTowerRunner {
             }
         }
 
+        milestone(logger, "Resolving job template: template=" + jobTemplate);
         // Get the job template.
         JSONObject template;
         try {
             template = myTowerConnection.getJobTemplate(expandedJobTemplate, templateType);
         } catch (AnsibleTowerException e) {
-            logger.println("ERROR: Unable to lookup job template " + e.getMessage());
             myTowerConnection.releaseToken();
-            return false;
+            return failOperation(logger, "Job was not launched because the " + templateType
+                + " template lookup failed", e);
         }
+        milestone(logger, "Job template resolved: templateId=" + template.getLong("id"));
 
 
         if (jobType != null && template.containsKey("ask_job_type_on_launch") && !template.getBoolean("ask_job_type_on_launch")) {
@@ -202,16 +230,17 @@ public class AnsibleTowerRunner {
             logger.println("Requesting tower to run " + templateType + " template " + expandedJobTemplate);
         }
 
+        milestone(logger, "Launching job template: templateId=" + template.getLong("id"));
         try {
             this.myJob.setJobId(myTowerConnection.submitTemplate(template.getLong("id"), expandedExtraVars, expandedLimit, expandedJobTags, expandedSkipJobTags, jobType, expandedInventory, expandedCredential, expandedScmBranch, templateType));
         } catch (AnsibleTowerException e) {
-            logger.println("ERROR: Unable to request job template invocation " + e.getMessage());
             myTowerConnection.releaseToken();
-            return false;
+            return failOperation(logger, "Unable to confirm job launch", e);
         }
 
         String jobURL = myTowerConnection.getJobURL(this.myJob.getJobID(), templateType);
-        logger.println("Template Job URL: " + jobURL);
+        milestone(logger, "Job accepted by controller: jobId=" + this.myJob.getJobID());
+        logger.println("[Ansible-Tower] Template Job URL: " + jobURL);
 
         towerResults.put("JOB_ID", Long.toString(this.myJob.getJobID()));
         towerResults.put("JOB_URL", jobURL);
@@ -236,9 +265,8 @@ public class AnsibleTowerRunner {
             Thread.currentThread().interrupt();
             return result;
         } catch (AnsibleTowerException e) {
-            logger.println("ERROR: Failed to poll job status from Tower: " + e.getMessage());
             myTowerConnection.releaseToken();
-            return false;
+            return failOperation(logger, "Failed to poll job status from Tower", e);
         }
 
         boolean wasSuccessful = pollingResult.isSuccessful();
@@ -248,13 +276,12 @@ public class AnsibleTowerRunner {
         try {
             jenkinsVariables = this.myJob.getExports();
         } catch (AnsibleTowerException e) {
-            logger.println("Failed to get exported variables: " + e);
             myTowerConnection.releaseToken();
-            return false;
+            return failOperation(logger, "Failed to get exported variables", e);
         }
         for (Map.Entry<String, String> entrySet : jenkinsVariables.entrySet()) {
             if (verbose) {
-                logger.println("Receiving from Jenkins job '" + entrySet.getKey() + "' with value '" + entrySet.getValue() + "'");
+                logger.println("Receiving exported variable '" + entrySet.getKey() + "' from Tower job");
             }
             envVars.put(entrySet.getKey(), entrySet.getValue());
             towerResults.put(entrySet.getKey(), entrySet.getValue());
@@ -266,9 +293,8 @@ public class AnsibleTowerRunner {
                 try {
                     envInjectActionSetter.addEnvVarsToRun(run, envVars);
                 } catch (Exception e) {
-                    logger.println("Unable to inject environment variables: " + e.getMessage());
                     myTowerConnection.releaseToken();
-                    return false;
+                    return fail(logger, "Unable to inject environment variables: " + e.getMessage());
                 }
             }
 
@@ -277,17 +303,16 @@ public class AnsibleTowerRunner {
                 try {
                     envInjectActionSetter.addEnvVarsToRun(run, envVars);
                 } catch (Exception e) {
-                    logger.println("Unable to inject environment variables: " + e.getMessage());
                     myTowerConnection.releaseToken();
-                    return false;
+                    return fail(logger, "Unable to inject environment variables: " + e.getMessage());
                 }
             }
         }
 
         if (wasSuccessful) {
-            logger.println("Tower completed the requested job");
+            milestone(logger, "Job completed: jobId=" + this.myJob.getJobID() + ", result=SUCCESS");
         } else {
-            logger.println("Tower failed to complete the requested job");
+            fail(logger, "Job completed: jobId=" + this.myJob.getJobID() + ", result=FAILED");
         }
 
         towerResults.put("JOB_RESULT", wasSuccessful ? "SUCCESS" : "FAILED");
@@ -311,41 +336,35 @@ public class AnsibleTowerRunner {
     }
 
     public boolean cancelJob(PrintStream logger) {
-        logger.println("Attempting to cancel launched Tower job");
+        milestone(logger, "Attempting to cancel launched Tower job");
         try {
             this.myJob.cancelJob();
-            logger.println("Job successfully canceled in Tower");
+            return fail(logger, "Tower job was canceled after the Jenkins operation was interrupted");
         } catch (AnsibleTowerException ae) {
-            logger.println("Failed to cancel tower job: " + ae);
+            return fail(logger, "Failed to cancel Tower job after interruption: " + ae.getMessage());
         }
-        return false;
     }
 
     public boolean cancelProjectSync(PrintStream logger, TowerProjectSync projectSync) {
-        logger.println("Attempting to cancel project sync");
+        milestone(logger, "Attempting to cancel project sync");
         try {
             projectSync.cancelSync();
-            logger.println("Project sync successfullt canceled in Tower");
+            return fail(logger, "Tower project sync was canceled after the Jenkins operation was interrupted");
         } catch (AnsibleTowerException ae) {
-            logger.println("Failed to cancel tower project sync: " + ae);
+            return fail(logger, "Failed to cancel Tower project sync after interruption: " + ae.getMessage());
         }
-        return false;
     }
 
     public boolean projectSync(PrintStream logger, String towerServer, String towerCredentialsId, String projectName,
                                boolean verbose, boolean importTowerLogs, boolean removeColor, EnvVars envVars,
                                FilePath ws, Run<?, ?> run, Properties towerResults, boolean async) {
 
-        if (verbose) {
-            logger.println("Beginning Ansible Tower Project Sync on " + towerServer + " for " + projectName);
-        }
-
+        milestone(logger, "Starting project sync: server=" + towerServer + ", project=" + projectName);
         // Get our Tower connector
         AnsibleTowerGlobalConfig myConfig = new AnsibleTowerGlobalConfig();
         TowerInstallation towerConfigToRunOn = myConfig.getTowerInstallationByName(towerServer);
         if (towerConfigToRunOn == null) {
-            logger.println("ERROR: Ansible tower server " + towerServer + " does not exist in Ansible Tower configuration");
-            return false;
+            return fail(logger, "Ansible Tower server " + towerServer + " does not exist in Jenkins configuration");
         }
 
         // Apply credential override if provided
@@ -354,6 +373,7 @@ public class AnsibleTowerRunner {
         }
 
         TowerConnector myTowerConnection = towerConfigToRunOn.getTowerConnector();
+        myTowerConnection.setConsole(logger);
 
         myTowerConnection.setRemoveColor(removeColor);
 
@@ -367,26 +387,25 @@ public class AnsibleTowerRunner {
         }
 
         // Get the project
+        milestone(logger, "Resolving project: project=" + expandedProject);
         TowerProject myProject = null;
         try {
             myProject = new TowerProject(expandedProject, myTowerConnection);
         } catch (AnsibleTowerException e) {
-            logger.println("ERROR: Unable to lookup project: " + e.getMessage());
             myTowerConnection.releaseToken();
-            return false;
+            return failOperation(logger, "Project sync was not launched because project lookup failed", e);
         }
+        milestone(logger, "Project resolved: project=" + expandedProject);
 
         // Make sure we can update the project
         try {
             if (!myProject.canUpdate()) {
-                logger.println("ERROR: The requested project can not be synced, is it a manual project?");
                 myTowerConnection.releaseToken();
-                return false;
+                return fail(logger, "The requested project cannot be synced; it may be a manual project");
             }
         } catch (AnsibleTowerException e) {
-            logger.println("ERROR: Failed to check if the project can be synced: " + e.getMessage());
             myTowerConnection.releaseToken();
-            return false;
+            return failOperation(logger, "Failed to check whether the project can be synced", e);
         }
 
         if (verbose) {
@@ -394,17 +413,18 @@ public class AnsibleTowerRunner {
         }
 
         // Request a project sync
+        milestone(logger, "Requesting project sync: project=" + expandedProject);
         TowerProjectSync projectSync;
         try {
             projectSync = myProject.sync();
         } catch (AnsibleTowerException e) {
-            logger.println("ERROR: Unable to request project sync invocation " + e.getMessage());
             myTowerConnection.releaseToken();
-            return false;
+            return failOperation(logger, "Unable to confirm project sync launch", e);
         }
 
         String syncURL = projectSync.getURL();
-        logger.println("Project Sync URL: " + syncURL);
+        milestone(logger, "Project sync accepted: syncId=" + projectSync.getID());
+        logger.println("[Ansible-Tower] Project Sync URL: " + syncURL);
         towerResults.put("SYNC_ID", projectSync.getID());
         towerResults.put("SYNC_URL", syncURL);
 
@@ -430,17 +450,15 @@ public class AnsibleTowerRunner {
                         logger.println(event);
                     }
                 } catch (AnsibleTowerException e) {
-                    logger.println("ERROR: Failed to get project sync events from tower: " + e.getMessage());
                     myTowerConnection.releaseToken();
-                    return false;
+                    return fail(logger, "Failed to get project sync events from Tower: " + e.getMessage());
                 }
             }
             try {
                 syncCompleted = projectSync.isComplete();
             } catch (AnsibleTowerException e) {
-                logger.println("ERROR: Failed to get project sync status from Tower: " + e.getMessage());
                 myTowerConnection.releaseToken();
-                return false;
+                return fail(logger, "Failed to get project sync status from Tower: " + e.getMessage());
             }
             if (!syncCompleted) {
                 if (Thread.currentThread().isInterrupted()) {
@@ -465,9 +483,8 @@ public class AnsibleTowerRunner {
                     logger.println(event);
                 }
             } catch (AnsibleTowerException e) {
-                logger.println("ERROR: Failed to get final project sync events from tower: " + e.getMessage());
                 myTowerConnection.releaseToken();
-                return false;
+                return fail(logger, "Failed to get final project sync events from Tower: " + e.getMessage());
             }
         }
 
@@ -475,18 +492,17 @@ public class AnsibleTowerRunner {
         try {
             wasSuccessful = projectSync.wasSuccessful();
         } catch (AnsibleTowerException e) {
-            logger.println("ERROR: Failed to get project sync compltion status: " + e.getMessage());
             myTowerConnection.releaseToken();
-            return false;
+            return fail(logger, "Failed to get project sync completion status: " + e.getMessage());
         }
         towerResults.put("SYNC_RESULT", wasSuccessful ? "SUCCESS" : "FAILED");
 
         // Project sync can not export jenkins variables so we don't need to check for them here
 
         if (wasSuccessful) {
-            logger.println("Tower completed the requested project sync");
+            milestone(logger, "Project sync completed: syncId=" + projectSync.getID() + ", result=SUCCESS");
         } else {
-            logger.println("Tower failed to complete the requested project sync");
+            fail(logger, "Project sync completed: syncId=" + projectSync.getID() + ", result=FAILED");
         }
 
         myTowerConnection.releaseToken();
@@ -499,16 +515,12 @@ public class AnsibleTowerRunner {
                                    boolean verbose,
                                    EnvVars envVars, FilePath ws, Run<?, ?> run, Properties towerResults) {
 
-        if (verbose) {
-            logger.println("Beginning Ansible Tower Project Revision on " + towerServer + " for " + projectName);
-        }
-
+        milestone(logger, "Starting project revision: server=" + towerServer + ", project=" + projectName);
         // Get our Tower connector
         AnsibleTowerGlobalConfig myConfig = new AnsibleTowerGlobalConfig();
         TowerInstallation towerConfigToRunOn = myConfig.getTowerInstallationByName(towerServer);
         if (towerConfigToRunOn == null) {
-            logger.println("ERROR: Ansible tower server " + towerServer + " does not exist in Ansible Tower configuration");
-            return false;
+            return fail(logger, "Ansible Tower server " + towerServer + " does not exist in Jenkins configuration");
         }
 
         // Apply credential override if provided
@@ -517,6 +529,7 @@ public class AnsibleTowerRunner {
         }
 
         TowerConnector myTowerConnection = towerConfigToRunOn.getTowerConnector();
+        myTowerConnection.setConsole(logger);
 
         // Expand all of the parameters
         String expandedProject = envVars.expand(projectName);
@@ -532,26 +545,29 @@ public class AnsibleTowerRunner {
         }
 
         // Get the project (this will also validates the project exists)
+        milestone(logger, "Resolving project: project=" + expandedProject);
         TowerProject myProject = null;
         try {
             myProject = new TowerProject(expandedProject, myTowerConnection);
         } catch (AnsibleTowerException e) {
-            logger.println("ERROR: Unable to lookup project: " + e.getMessage());
             myTowerConnection.releaseToken();
-            return false;
+            return failOperation(logger, "Project revision was not updated because project lookup failed", e);
         }
+        milestone(logger, "Project resolved: project=" + expandedProject);
 
         if (verbose) {
             logger.println("Requesting tower to update " + expandedProject + " revision to " + expandedRevision);
         }
 
         // Update project revision
+        milestone(logger, "Updating project revision: project=" + expandedProject);
         try {
-            return myProject.updateRevision(expandedRevision);
+            boolean updated = myProject.updateRevision(expandedRevision);
+            if(updated) { milestone(logger, "Project revision updated: project=" + expandedProject); }
+            return updated;
         } catch (AnsibleTowerException e) {
-            logger.println("ERROR: Unable to update project revision " + e.getMessage());
             myTowerConnection.releaseToken();
-            return false;
+            return failOperation(logger, "Unable to update project revision", e);
         }
     }
 }

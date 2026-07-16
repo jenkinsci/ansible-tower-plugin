@@ -11,6 +11,7 @@ import org.jenkinsci.plugins.ansible_tower.exceptions.AnsibleTowerDoesNotSupport
 import org.jenkinsci.plugins.ansible_tower.exceptions.AnsibleTowerRefusesToGiveToken;
 import org.jenkinsci.plugins.ansible_tower.exceptions.AnsibleTowerException;
 import org.jenkinsci.plugins.ansible_tower.exceptions.AnsibleTowerTransientException;
+import org.jenkinsci.plugins.ansible_tower.exceptions.AnsibleTowerRequestException;
 
 import java.io.*;
 import java.net.URI;
@@ -109,6 +110,7 @@ public class TowerConnector implements Serializable {
     public void setDebug(boolean debug) {
         logger.setDebugging(debug);
     }
+    public void setConsole(PrintStream console) { logger.setConsole(console); }
     public void setRemoveColor(boolean removeColor) { this.removeColor = removeColor;}
     public void setGetWorkflowChildLogs(boolean importChildWorkflowLogs) { this.importChildWorkflowLogs = importChildWorkflowLogs; }
     public void setGetFullLogs(boolean getFullLogs) { this.getFullLogs = getFullLogs; }
@@ -361,22 +363,39 @@ public class TowerConnector implements Serializable {
 
         DefaultHttpClient httpClient = getHttpClient();
         HttpResponse response;
+        long requestStarted = System.nanoTime();
         try {
             response = httpClient.execute(request);
         } catch(Exception e) {
+            long durationMs = (System.nanoTime() - requestStarted) / 1_000_000L;
+            String failure = "HTTP request failed: method=" + getMethodName(requestType)
+                + ", url=" + TowerLogger.sanitizeUrl(myURI.toString())
+                + ", exception=" + e.getClass().getSimpleName() + ", durationMs=" + durationMs;
+            logger.consoleError(failure);
+            if(requestType == POST && isOutcomeUncertainEndpoint(endpoint)) {
+                logger.consoleWarning(unknownOutcomeMessage(endpoint,
+                    "Jenkins did not receive a response"));
+            }
             if(isTransientTransportFailure(e)) {
                 throw new AnsibleTowerTransientException("Transient Tower transport failure: method="
-                    + getMethodName(requestType) + ", endpoint=" + buildEndpoint(endpoint)
+                    + getMethodName(requestType) + ", url=" + TowerLogger.sanitizeUrl(myURI.toString())
                     + ", cause=" + e.getClass().getSimpleName(), e);
             }
             throw new AnsibleTowerException("Unable to make tower request: "+ e.getMessage());
         }
 
         int statusCode = response.getStatusLine().getStatusCode();
-        String responseMetadata = "HTTP request completed: method=" + getMethodName(requestType)
-            + ", endpoint=" + buildEndpoint(endpoint) + ", httpStatus=" + statusCode;
+        long durationMs = (System.nanoTime() - requestStarted) / 1_000_000L;
+        String responseMetadata = "HTTP request " + (statusCode >= 400 ? "failed" : "completed")
+            + ": method=" + getMethodName(requestType)
+            + ", url=" + TowerLogger.sanitizeUrl(myURI.toString())
+            + ", httpStatus=" + statusCode + ", durationMs=" + durationMs;
         if(statusCode >= 400) {
-            logger.warning(responseMetadata);
+            logger.consoleError(responseMetadata);
+            if(requestType == POST && isOutcomeUncertainEndpoint(endpoint) && isTransientGatewayStatus(statusCode)) {
+                logger.consoleWarning(unknownOutcomeMessage(endpoint,
+                    "Jenkins received HTTP " + statusCode));
+            }
         } else {
             logger.debug(responseMetadata);
         }
@@ -394,14 +413,26 @@ public class TowerConnector implements Serializable {
                 if(responseObject.containsKey("detail")) {
                     exceptionText+= ": "+ responseObject.getString("detail");
                 }
-            } catch (IOException ioe) {
-                // Ignore if we get an error
+            } catch (IOException | RuntimeException ignored) {
+                // Keep the generic forbidden message when the error body is not valid JSON.
             }
 
             throw new AnsibleTowerException(exceptionText);
         }
 
         return response;
+    }
+
+    static boolean isOutcomeUncertainEndpoint(String endpoint) {
+        return endpoint != null && (endpoint.contains("/launch/") || endpoint.endsWith("/update/"));
+    }
+
+    static String unknownOutcomeMessage(String endpoint, String responseFailure) {
+        boolean launch = endpoint != null && endpoint.contains("/launch/");
+        String operation = launch ? "launch" : "project sync";
+        String resource = launch ? "job" : "sync";
+        return "Tower " + operation + " outcome is unknown; the controller may have created the "
+            + resource + ", but " + responseFailure + ". Automatic retry was not performed.";
     }
 
     static boolean isTransientTransportFailure(Throwable failure) {
@@ -500,6 +531,7 @@ public class TowerConnector implements Serializable {
             Integer.parseInt(idToCheck);
             // We got an ID so lets see if we can load that item
             HttpResponse response = makeRequest(GET, api_endpoint + idToCheck +"/");
+            requireSuccessfulLookup(response, api_endpoint + idToCheck + "/");
             JSONObject responseObject;
             try {
                 responseObject = JSONObject.fromObject(EntityUtils.toString(response.getEntity()));
@@ -519,6 +551,7 @@ public class TowerConnector implements Serializable {
             } catch(UnsupportedEncodingException e) {
                 throw new AnsibleTowerException("Unable to encode item name for lookup");
             }
+            requireSuccessfulLookup(response, api_endpoint + "?name=<redacted>");
 
             JSONObject responseObject;
             try {
@@ -544,6 +577,15 @@ public class TowerConnector implements Serializable {
         }
     }
 
+    private void requireSuccessfulLookup(HttpResponse response, String endpoint) throws AnsibleTowerException {
+        int statusCode = response.getStatusLine().getStatusCode();
+        if(statusCode != 200) {
+            EntityUtils.consumeQuietly(response.getEntity());
+            throw new AnsibleTowerRequestException("GET " + TowerLogger.sanitizeUrl(url + buildEndpoint(endpoint))
+                + " returned HTTP " + statusCode);
+        }
+    }
+
     public JSONObject getJobTemplate(String jobTemplate, String templateType) throws AnsibleTowerException {
         if(jobTemplate == null || jobTemplate.isEmpty()) {
             throw new AnsibleTowerException("Template can not be null");
@@ -561,7 +603,7 @@ public class TowerConnector implements Serializable {
             String ucTemplateType = templateType.replaceFirst(templateType.substring(0,1), templateType.substring(0,1).toUpperCase());
             throw new AnsibleTowerException(ucTemplateType +" template does not exist in tower");
         } catch(AnsibleTowerException ate) {
-            throw new AnsibleTowerException("Unable to find "+ templateType +" template: "+ ate.getMessage());
+            throw new AnsibleTowerException("Unable to find "+ templateType +" template: "+ ate.getMessage(), ate);
         }
 
         // Now get the job template so we can check the options being passed in
@@ -772,7 +814,7 @@ public class TowerConnector implements Serializable {
                 throw new AnsibleTowerException("Tower received a bad request (400 response code)");
             }
         } else {
-            throw new AnsibleTowerException("Unexpected error code returned ("
+            throw new AnsibleTowerRequestException("Unexpected error code returned ("
                 + response.getStatusLine().getStatusCode() + ")");
         }
     }

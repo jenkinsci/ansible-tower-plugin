@@ -396,7 +396,36 @@ To collect detailed diagnostics:
 2. Open **Manage Jenkins → System Log**.
 3. Add a Log Recorder for `org.jenkinsci.plugins.ansible_tower` at `FINE` or `ALL`.
 
-Operational `WARNING` and `SEVERE` records are emitted even when debugging is disabled. Messages retain the `[Ansible-Tower]` prefix. System diagnostics do not log request/response payloads, credentials, authorization headers, or tokens. The separate `verbose` build-console option may print expanded launch values.
+Logging is split between two audiences. The build console always shows user-facing
+milestones, retry notices, and failures needed to diagnose the current run. Jenkins
+System Log keeps lower-level diagnostics; successful HTTP request metadata is
+available at `FINE`, while operational `WARNING` and `SEVERE` records are emitted
+even when debugging is disabled. Messages retain the `[Ansible-Tower]` prefix.
+
+Neither destination logs request or response payloads, extra variables, credentials,
+authorization headers, passwords, or tokens. Endpoint query values are redacted.
+The `verbose` build-console option adds safe expansion and launch progress details,
+but does not expose expanded extra variables or credential values.
+
+Typical build-console diagnostics look like:
+
+```text
+[Ansible-Tower] INFO: Resolving job template: template=deploy
+[Ansible-Tower] ERROR: HTTP request failed: method=GET, url=https://aap.example.com/api/controller/v2/job_templates/?name=<redacted>, httpStatus=502, durationMs=103
+[Ansible-Tower] ERROR: Job was not launched because the job template lookup failed
+```
+
+If a launch request receives a transient gateway response or loses its connection,
+the console explicitly reports that the launch outcome is unknown. The plugin does
+not automatically retry that POST because the controller may already have created
+the job:
+
+```text
+[Ansible-Tower] WARNING: Tower launch outcome is unknown; the controller may have created the job, but Jenkins received HTTP 502. Automatic retry was not performed.
+```
+
+Polling recovery continues to report both the retry and recovery in the build
+console, including the job ID, endpoint, status, attempt, and retry delay.
 
 For Jenkins installed as a Linux systemd service:
 

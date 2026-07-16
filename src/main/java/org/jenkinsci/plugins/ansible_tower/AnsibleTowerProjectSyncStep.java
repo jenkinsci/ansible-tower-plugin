@@ -11,6 +11,7 @@ import hudson.model.*;
 import hudson.util.ListBoxModel;
 import org.jenkinsci.plugins.ansible_tower.util.GetUserPageCredentials;
 import org.jenkinsci.plugins.ansible_tower.util.TowerInstallation;
+import org.jenkinsci.plugins.ansible_tower.util.TowerLogger;
 import org.jenkinsci.plugins.workflow.steps.AbstractStepDescriptorImpl;
 import org.jenkinsci.plugins.workflow.steps.AbstractStepImpl;
 import org.jenkinsci.plugins.workflow.steps.AbstractSynchronousNonBlockingStepExecution;
@@ -182,12 +183,18 @@ public class AnsibleTowerProjectSyncStep extends AbstractStepImpl {
             boolean async = false;
             if(step.getAsync() != null) { async = step.getAsync(); }
             Properties map = new Properties();
-            boolean runResult = runner.projectSync(
-                    listener.getLogger(), step.getTowerServer(), step.getTowerCredentialsId(), project, verbose,
-                    importTowerLogs, removeColor, envVars, ws, run, map, async
-            );
+            boolean runResult;
+            try {
+                runResult = runner.projectSync(
+                        listener.getLogger(), step.getTowerServer(), step.getTowerCredentialsId(), project, verbose,
+                        importTowerLogs, removeColor, envVars, ws, run, map, async
+                );
+            } catch(RuntimeException failure) {
+                throw new AbortException(TowerLogger.reportUnexpected(
+                    "Ansible Tower project sync operation", failure));
+            }
             if(!runResult && throwExceptionWhenFail) {
-                throw new AbortException("Ansible Tower Project Sync build step failed");
+                throw new AbortException(runner.getLastFailureMessage());
             }
             return map;
         }
