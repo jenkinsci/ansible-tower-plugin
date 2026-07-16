@@ -11,6 +11,7 @@ import org.jenkinsci.plugins.ansible_tower.exceptions.AnsibleTowerDoesNotSupport
 import org.jenkinsci.plugins.ansible_tower.exceptions.AnsibleTowerRefusesToGiveToken;
 import org.jenkinsci.plugins.ansible_tower.exceptions.AnsibleTowerException;
 import org.jenkinsci.plugins.ansible_tower.exceptions.AnsibleTowerTransientException;
+import org.jenkinsci.plugins.ansible_tower.exceptions.AnsibleTowerRequestException;
 
 import java.io.*;
 import java.net.URI;
@@ -385,7 +386,8 @@ public class TowerConnector implements Serializable {
 
         int statusCode = response.getStatusLine().getStatusCode();
         long durationMs = (System.nanoTime() - requestStarted) / 1_000_000L;
-        String responseMetadata = "HTTP request completed: method=" + getMethodName(requestType)
+        String responseMetadata = "HTTP request " + (statusCode >= 400 ? "failed" : "completed")
+            + ": method=" + getMethodName(requestType)
             + ", url=" + TowerLogger.sanitizeUrl(myURI.toString())
             + ", httpStatus=" + statusCode + ", durationMs=" + durationMs;
         if(statusCode >= 400) {
@@ -579,7 +581,7 @@ public class TowerConnector implements Serializable {
         int statusCode = response.getStatusLine().getStatusCode();
         if(statusCode != 200) {
             EntityUtils.consumeQuietly(response.getEntity());
-            throw new AnsibleTowerException("GET " + TowerLogger.sanitizeUrl(url + buildEndpoint(endpoint))
+            throw new AnsibleTowerRequestException("GET " + TowerLogger.sanitizeUrl(url + buildEndpoint(endpoint))
                 + " returned HTTP " + statusCode);
         }
     }
@@ -600,6 +602,8 @@ public class TowerConnector implements Serializable {
         } catch(AnsibleTowerItemDoesNotExist atidne) {
             String ucTemplateType = templateType.replaceFirst(templateType.substring(0,1), templateType.substring(0,1).toUpperCase());
             throw new AnsibleTowerException(ucTemplateType +" template does not exist in tower");
+        } catch(AnsibleTowerRequestException | AnsibleTowerTransientException requestFailure) {
+            throw requestFailure;
         } catch(AnsibleTowerException ate) {
             throw new AnsibleTowerException("Unable to find "+ templateType +" template: "+ ate.getMessage());
         }

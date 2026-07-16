@@ -12,6 +12,8 @@ import hudson.model.Run;
 import jenkins.model.Jenkins;
 import net.sf.json.JSONObject;
 import org.jenkinsci.plugins.ansible_tower.exceptions.AnsibleTowerException;
+import org.jenkinsci.plugins.ansible_tower.exceptions.AnsibleTowerRequestException;
+import org.jenkinsci.plugins.ansible_tower.exceptions.AnsibleTowerTransientException;
 import org.jenkinsci.plugins.ansible_tower.util.*;
 import org.jenkinsci.plugins.envinject.service.EnvInjectActionSetter;
 
@@ -163,6 +165,10 @@ public class AnsibleTowerRunner {
             template = myTowerConnection.getJobTemplate(expandedJobTemplate, templateType);
         } catch (AnsibleTowerException e) {
             myTowerConnection.releaseToken();
+            if(e instanceof AnsibleTowerRequestException || e instanceof AnsibleTowerTransientException) {
+                return fail(logger, "Job was not launched because the " + templateType
+                    + " template lookup request failed");
+            }
             return fail(logger, "Unable to lookup job template; the job was not launched: " + e.getMessage());
         }
         milestone(logger, "Job template resolved: templateId=" + template.getLong("id"));
