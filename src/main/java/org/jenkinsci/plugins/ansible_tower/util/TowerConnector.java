@@ -602,10 +602,8 @@ public class TowerConnector implements Serializable {
         } catch(AnsibleTowerItemDoesNotExist atidne) {
             String ucTemplateType = templateType.replaceFirst(templateType.substring(0,1), templateType.substring(0,1).toUpperCase());
             throw new AnsibleTowerException(ucTemplateType +" template does not exist in tower");
-        } catch(AnsibleTowerRequestException | AnsibleTowerTransientException requestFailure) {
-            throw requestFailure;
         } catch(AnsibleTowerException ate) {
-            throw new AnsibleTowerException("Unable to find "+ templateType +" template: "+ ate.getMessage());
+            throw new AnsibleTowerException("Unable to find "+ templateType +" template: "+ ate.getMessage(), ate);
         }
 
         // Now get the job template so we can check the options being passed in
@@ -816,7 +814,7 @@ public class TowerConnector implements Serializable {
                 throw new AnsibleTowerException("Tower received a bad request (400 response code)");
             }
         } else {
-            throw new AnsibleTowerException("Unexpected error code returned ("
+            throw new AnsibleTowerRequestException("Unexpected error code returned ("
                 + response.getStatusLine().getStatusCode() + ")");
         }
     }

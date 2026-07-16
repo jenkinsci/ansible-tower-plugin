@@ -1,6 +1,6 @@
 package org.jenkinsci.plugins.ansible_tower.exceptions;
 
-public class AnsibleTowerTransientException extends AnsibleTowerException {
+public class AnsibleTowerTransientException extends AnsibleTowerException implements ConsoleDiagnosedException {
     private final int statusCode;
 
     public AnsibleTowerTransientException(String message, int statusCode) {

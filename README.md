@@ -412,7 +412,7 @@ Typical build-console diagnostics look like:
 ```text
 [Ansible-Tower] INFO: Resolving job template: template=deploy
 [Ansible-Tower] ERROR: HTTP request failed: method=GET, url=https://aap.example.com/api/controller/v2/job_templates/?name=<redacted>, httpStatus=502, durationMs=103
-[Ansible-Tower] ERROR: Job was not launched because the job template lookup request failed
+[Ansible-Tower] ERROR: Job was not launched because the job template lookup failed
 ```
 
 If a launch request receives a transient gateway response or loses its connection,

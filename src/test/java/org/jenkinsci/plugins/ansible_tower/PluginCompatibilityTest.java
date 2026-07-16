@@ -16,6 +16,8 @@ import jenkins.model.Jenkins;
 import org.apache.http.client.HttpClient;
 import org.jenkinsci.plugins.ansible_tower.util.TowerConnector;
 import org.jenkinsci.plugins.ansible_tower.util.TowerInstallation;
+import org.jenkinsci.plugins.ansible_tower.exceptions.AnsibleTowerException;
+import org.jenkinsci.plugins.ansible_tower.exceptions.AnsibleTowerRequestException;
 import org.jenkinsci.plugins.workflow.steps.StepDescriptor;
 import org.junit.jupiter.api.Test;
 import org.jvnet.hudson.test.JenkinsRule;
@@ -88,6 +90,16 @@ public class PluginCompatibilityTest {
         String console = output.toString(StandardCharsets.UTF_8);
         assertThat(console.contains("[Ansible-Tower] INFO: Starting job template operation"), is(true));
         assertThat(console.contains("[Ansible-Tower] ERROR: Ansible Tower server missing-tower"), is(true));
+    }
+
+    @Test
+    public void runnerRecognizesConsoleDiagnosticsThroughWrappedCauses() {
+        AnsibleTowerException diagnosed = new AnsibleTowerException("template lookup failed",
+            new AnsibleTowerRequestException("GET returned HTTP 503"));
+        AnsibleTowerException undiagnosed = new AnsibleTowerException("invalid template configuration");
+
+        assertThat(AnsibleTowerRunner.hasConsoleDiagnostics(diagnosed), is(true));
+        assertThat(AnsibleTowerRunner.hasConsoleDiagnostics(undiagnosed), is(false));
     }
 
     @Test

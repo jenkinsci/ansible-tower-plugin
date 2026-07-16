@@ -4,6 +4,7 @@ import net.sf.json.JSONObject;
 import org.apache.http.HttpResponse;
 import org.apache.http.util.EntityUtils;
 import org.jenkinsci.plugins.ansible_tower.exceptions.AnsibleTowerException;
+import org.jenkinsci.plugins.ansible_tower.exceptions.AnsibleTowerRequestException;
 
 import java.io.IOException;
 import java.io.Serializable;
@@ -22,7 +23,7 @@ public class TowerProjectSync implements Serializable {
 
         HttpResponse response = connection.makeRequest(connection.POST, projectReference.getProjectSyncURL(), null, false);
         if (response.getStatusLine().getStatusCode() != 202 && response.getStatusLine().getStatusCode() != 200) {
-            throw new AnsibleTowerException("Unexpected error code returned when launching project sync (" + response.getStatusLine().getStatusCode() + ")");
+            throw new AnsibleTowerRequestException("Unexpected error code returned when launching project sync (" + response.getStatusLine().getStatusCode() + ")");
         }
         try {
             String json = EntityUtils.toString(response.getEntity());
@@ -35,7 +36,7 @@ public class TowerProjectSync implements Serializable {
     private void loadSync(int method)  throws AnsibleTowerException {
         HttpResponse response = this.connection.makeRequest(method, syncData.getString("url"), null, false);
         if (response.getStatusLine().getStatusCode() != 200) {
-            throw new AnsibleTowerException("Unexpected error code returned when loading project sync (" + response.getStatusLine().getStatusCode() + ")");
+            throw new AnsibleTowerRequestException("Unexpected error code returned when loading project sync (" + response.getStatusLine().getStatusCode() + ")");
         }
         try {
             String json = EntityUtils.toString(response.getEntity());

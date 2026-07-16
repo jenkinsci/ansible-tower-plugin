@@ -5,6 +5,7 @@ import org.apache.http.HttpResponse;
 import org.apache.http.util.EntityUtils;
 import org.jenkinsci.plugins.ansible_tower.exceptions.AnsibleTowerException;
 import org.jenkinsci.plugins.ansible_tower.exceptions.AnsibleTowerItemDoesNotExist;
+import org.jenkinsci.plugins.ansible_tower.exceptions.AnsibleTowerRequestException;
 
 import java.io.IOException;
 import java.io.Serializable;
@@ -29,7 +30,7 @@ public class TowerProject implements Serializable {
         } catch(AnsibleTowerItemDoesNotExist atidne) {
             throw new AnsibleTowerException("Project "+ projectName +" does not exist in tower");
         } catch(AnsibleTowerException ate) {
-            throw new AnsibleTowerException("Unable to find project "+ projectName +": "+ ate.getMessage());
+            throw new AnsibleTowerException("Unable to find project "+ projectName +": "+ ate.getMessage(), ate);
         }
 
         // Now that we have an ID, get the project from its ID.
@@ -37,10 +38,10 @@ public class TowerProject implements Serializable {
         try {
             response = myConnector.makeRequest(myConnector.GET, apiEndPoint + projectID + "/", null, false);
         } catch(AnsibleTowerException e) {
-            throw new AnsibleTowerException("Failed to load project information for "+ projectName +": "+ e.getMessage());
+            throw new AnsibleTowerException("Failed to load project information for "+ projectName +": "+ e.getMessage(), e);
         }
         if (response.getStatusLine().getStatusCode() != 200) {
-            throw new AnsibleTowerException("Unexpected error code returned when getting project (" + response.getStatusLine().getStatusCode() + ")");
+            throw new AnsibleTowerRequestException("Unexpected error code returned when getting project (" + response.getStatusLine().getStatusCode() + ")");
         }
         try {
             String json = EntityUtils.toString(response.getEntity());
@@ -63,7 +64,7 @@ public class TowerProject implements Serializable {
             HttpResponse response = myConnector.makeRequest(myConnector.GET, projectData.getJSONObject("related").getString("update"), null, false);
 
             if (response.getStatusLine().getStatusCode() != 200) {
-                throw new AnsibleTowerException("Unexpected error code return when getting project update (" + response.getStatusLine().getStatusCode() + ")");
+                throw new AnsibleTowerRequestException("Unexpected error code return when getting project update (" + response.getStatusLine().getStatusCode() + ")");
             }
             try {
                 this.updateResponse = JSONObject.fromObject(EntityUtils.toString(response.getEntity()));
@@ -85,10 +86,10 @@ public class TowerProject implements Serializable {
         try {
             response = myConnector.makeRequest(myConnector.PATCH, finalEndPoint, patchBody, false);
         } catch(AnsibleTowerException e) {
-            throw new AnsibleTowerException("Failed to update project revision for "+ projectName +": "+ e.getMessage());
+            throw new AnsibleTowerException("Failed to update project revision for "+ projectName +": "+ e.getMessage(), e);
         }
         if (response.getStatusLine().getStatusCode() != 200) {
-            throw new AnsibleTowerException("Unexpected response code returned when updating project (" + response.getStatusLine().getStatusCode() + ")");
+            throw new AnsibleTowerRequestException("Unexpected response code returned when updating project (" + response.getStatusLine().getStatusCode() + ")");
         }
 
         // If we made it down here we were successful so we can return

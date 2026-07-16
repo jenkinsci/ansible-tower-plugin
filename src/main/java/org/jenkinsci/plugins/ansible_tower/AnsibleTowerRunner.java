@@ -12,8 +12,7 @@ import hudson.model.Run;
 import jenkins.model.Jenkins;
 import net.sf.json.JSONObject;
 import org.jenkinsci.plugins.ansible_tower.exceptions.AnsibleTowerException;
-import org.jenkinsci.plugins.ansible_tower.exceptions.AnsibleTowerRequestException;
-import org.jenkinsci.plugins.ansible_tower.exceptions.AnsibleTowerTransientException;
+import org.jenkinsci.plugins.ansible_tower.exceptions.ConsoleDiagnosedException;
 import org.jenkinsci.plugins.ansible_tower.util.*;
 import org.jenkinsci.plugins.envinject.service.EnvInjectActionSetter;
 
@@ -29,6 +28,22 @@ public class AnsibleTowerRunner {
     private boolean fail(PrintStream console, String message) {
         lastFailureMessage = TowerLogger.sanitizeMessage(message);
         console.println("[Ansible-Tower] ERROR: " + lastFailureMessage);
+        return false;
+    }
+
+    private boolean failOperation(PrintStream console, String outcome, AnsibleTowerException failure) {
+        String message = hasConsoleDiagnostics(failure)
+            ? outcome
+            : outcome + ": " + failure.getMessage();
+        return fail(console, message);
+    }
+
+    static boolean hasConsoleDiagnostics(Throwable failure) {
+        Throwable current = failure;
+        while(current != null) {
+            if(current instanceof ConsoleDiagnosedException) { return true; }
+            current = current.getCause();
+        }
         return false;
     }
 
@@ -165,11 +180,8 @@ public class AnsibleTowerRunner {
             template = myTowerConnection.getJobTemplate(expandedJobTemplate, templateType);
         } catch (AnsibleTowerException e) {
             myTowerConnection.releaseToken();
-            if(e instanceof AnsibleTowerRequestException || e instanceof AnsibleTowerTransientException) {
-                return fail(logger, "Job was not launched because the " + templateType
-                    + " template lookup request failed");
-            }
-            return fail(logger, "Unable to lookup job template; the job was not launched: " + e.getMessage());
+            return failOperation(logger, "Job was not launched because the " + templateType
+                + " template lookup failed", e);
         }
         milestone(logger, "Job template resolved: templateId=" + template.getLong("id"));
 
@@ -223,7 +235,7 @@ public class AnsibleTowerRunner {
             this.myJob.setJobId(myTowerConnection.submitTemplate(template.getLong("id"), expandedExtraVars, expandedLimit, expandedJobTags, expandedSkipJobTags, jobType, expandedInventory, expandedCredential, expandedScmBranch, templateType));
         } catch (AnsibleTowerException e) {
             myTowerConnection.releaseToken();
-            return fail(logger, "Unable to confirm job launch: " + e.getMessage());
+            return failOperation(logger, "Unable to confirm job launch", e);
         }
 
         String jobURL = myTowerConnection.getJobURL(this.myJob.getJobID(), templateType);
@@ -254,7 +266,7 @@ public class AnsibleTowerRunner {
             return result;
         } catch (AnsibleTowerException e) {
             myTowerConnection.releaseToken();
-            return fail(logger, "Failed to poll job status from Tower: " + e.getMessage());
+            return failOperation(logger, "Failed to poll job status from Tower", e);
         }
 
         boolean wasSuccessful = pollingResult.isSuccessful();
@@ -265,7 +277,7 @@ public class AnsibleTowerRunner {
             jenkinsVariables = this.myJob.getExports();
         } catch (AnsibleTowerException e) {
             myTowerConnection.releaseToken();
-            return fail(logger, "Failed to get exported variables: " + e.getMessage());
+            return failOperation(logger, "Failed to get exported variables", e);
         }
         for (Map.Entry<String, String> entrySet : jenkinsVariables.entrySet()) {
             if (verbose) {
@@ -381,7 +393,7 @@ public class AnsibleTowerRunner {
             myProject = new TowerProject(expandedProject, myTowerConnection);
         } catch (AnsibleTowerException e) {
             myTowerConnection.releaseToken();
-            return fail(logger, "Unable to lookup project; project sync was not launched: " + e.getMessage());
+            return failOperation(logger, "Project sync was not launched because project lookup failed", e);
         }
         milestone(logger, "Project resolved: project=" + expandedProject);
 
@@ -393,7 +405,7 @@ public class AnsibleTowerRunner {
             }
         } catch (AnsibleTowerException e) {
             myTowerConnection.releaseToken();
-            return fail(logger, "Failed to check whether the project can be synced: " + e.getMessage());
+            return failOperation(logger, "Failed to check whether the project can be synced", e);
         }
 
         if (verbose) {
@@ -407,7 +419,7 @@ public class AnsibleTowerRunner {
             projectSync = myProject.sync();
         } catch (AnsibleTowerException e) {
             myTowerConnection.releaseToken();
-            return fail(logger, "Unable to confirm project sync launch: " + e.getMessage());
+            return failOperation(logger, "Unable to confirm project sync launch", e);
         }
 
         String syncURL = projectSync.getURL();
@@ -539,7 +551,7 @@ public class AnsibleTowerRunner {
             myProject = new TowerProject(expandedProject, myTowerConnection);
         } catch (AnsibleTowerException e) {
             myTowerConnection.releaseToken();
-            return fail(logger, "Unable to lookup project; revision was not updated: " + e.getMessage());
+            return failOperation(logger, "Project revision was not updated because project lookup failed", e);
         }
         milestone(logger, "Project resolved: project=" + expandedProject);
 
@@ -555,7 +567,7 @@ public class AnsibleTowerRunner {
             return updated;
         } catch (AnsibleTowerException e) {
             myTowerConnection.releaseToken();
-            return fail(logger, "Unable to update project revision: " + e.getMessage());
+            return failOperation(logger, "Unable to update project revision", e);
         }
     }
 }
