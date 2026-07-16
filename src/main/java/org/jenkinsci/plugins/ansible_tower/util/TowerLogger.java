@@ -7,6 +7,8 @@ package org.jenkinsci.plugins.ansible_tower.util;
 
 import java.io.Serializable;
 import java.io.PrintStream;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -89,6 +91,19 @@ public class TowerLogger implements Serializable {
             sanitized.append(i == 0 ? '?' : '&').append(name).append("=<redacted>");
         }
         return sanitized.toString();
+    }
+
+    public static String sanitizeUrl(String value) {
+        if(value == null) { return "unknown"; }
+        try {
+            URI uri = new URI(value);
+            if(!uri.isAbsolute()) { return sanitizeEndpoint(value); }
+            URI withoutUserInfo = new URI(uri.getScheme(), null, uri.getHost(), uri.getPort(),
+                uri.getPath(), uri.getQuery(), null);
+            return sanitizeEndpoint(withoutUserInfo.toString());
+        } catch(URISyntaxException invalidUrl) {
+            return sanitizeEndpoint(value.replaceFirst("(?<=//)[^/@]+@", "<redacted>@"));
+        }
     }
 
     public static String sanitizeMessage(String message) {

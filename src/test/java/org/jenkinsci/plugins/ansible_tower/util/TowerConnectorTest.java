@@ -123,6 +123,9 @@ class TowerConnectorTest {
 
             String console = output.toString(StandardCharsets.UTF_8);
             MatcherAssert.assertThat(console, CoreMatchers.containsString("method=GET"));
+            MatcherAssert.assertThat(console, CoreMatchers.containsString(
+                "url=http://127.0.0.1:" + server.getAddress().getPort()
+                    + "/api/v2/job_templates/?name=<redacted>"));
             MatcherAssert.assertThat(console, CoreMatchers.containsString("httpStatus=502"));
             MatcherAssert.assertThat(console, CoreMatchers.containsString("durationMs="));
             MatcherAssert.assertThat(console, CoreMatchers.containsString("name=<redacted>"));
@@ -189,6 +192,9 @@ class TowerConnectorTest {
 
             String console = output.toString(StandardCharsets.UTF_8);
             MatcherAssert.assertThat(console, CoreMatchers.containsString("method=POST"));
+            MatcherAssert.assertThat(console, CoreMatchers.containsString(
+                "url=http://127.0.0.1:" + server.getAddress().getPort()
+                    + "/api/v2/job_templates/12/launch/"));
             MatcherAssert.assertThat(console, CoreMatchers.containsString("httpStatus=502"));
             MatcherAssert.assertThat(console, CoreMatchers.containsString("launch outcome is unknown"));
             MatcherAssert.assertThat(console, CoreMatchers.containsString("Automatic retry was not performed"));

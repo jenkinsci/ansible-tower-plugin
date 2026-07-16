@@ -411,8 +411,8 @@ Typical build-console diagnostics look like:
 
 ```text
 [Ansible-Tower] INFO: Resolving job template: template=deploy
-[Ansible-Tower] ERROR: HTTP request completed: method=GET, endpoint=/api/controller/v2/job_templates/?name=<redacted>, httpStatus=502, durationMs=103
-[Ansible-Tower] ERROR: Unable to lookup job template; the job was not launched: Unexpected error code returned when getting template (502)
+[Ansible-Tower] ERROR: HTTP request completed: method=GET, url=https://aap.example.com/api/controller/v2/job_templates/?name=<redacted>, httpStatus=502, durationMs=103
+[Ansible-Tower] ERROR: Unable to lookup job template; the job was not launched: GET https://aap.example.com/api/controller/v2/job_templates/?name=<redacted> returned HTTP 502
 ```
 
 If a launch request receives a transient gateway response or loses its connection,

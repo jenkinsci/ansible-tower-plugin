@@ -368,7 +368,7 @@ public class TowerConnector implements Serializable {
         } catch(Exception e) {
             long durationMs = (System.nanoTime() - requestStarted) / 1_000_000L;
             String failure = "HTTP request failed: method=" + getMethodName(requestType)
-                + ", endpoint=" + TowerLogger.sanitizeEndpoint(buildEndpoint(endpoint))
+                + ", url=" + TowerLogger.sanitizeUrl(myURI.toString())
                 + ", exception=" + e.getClass().getSimpleName() + ", durationMs=" + durationMs;
             logger.consoleError(failure);
             if(requestType == POST && isOutcomeUncertainEndpoint(endpoint)) {
@@ -377,8 +377,7 @@ public class TowerConnector implements Serializable {
             }
             if(isTransientTransportFailure(e)) {
                 throw new AnsibleTowerTransientException("Transient Tower transport failure: method="
-                    + getMethodName(requestType) + ", endpoint="
-                    + TowerLogger.sanitizeEndpoint(buildEndpoint(endpoint))
+                    + getMethodName(requestType) + ", url=" + TowerLogger.sanitizeUrl(myURI.toString())
                     + ", cause=" + e.getClass().getSimpleName(), e);
             }
             throw new AnsibleTowerException("Unable to make tower request: "+ e.getMessage());
@@ -387,7 +386,7 @@ public class TowerConnector implements Serializable {
         int statusCode = response.getStatusLine().getStatusCode();
         long durationMs = (System.nanoTime() - requestStarted) / 1_000_000L;
         String responseMetadata = "HTTP request completed: method=" + getMethodName(requestType)
-            + ", endpoint=" + TowerLogger.sanitizeEndpoint(buildEndpoint(endpoint))
+            + ", url=" + TowerLogger.sanitizeUrl(myURI.toString())
             + ", httpStatus=" + statusCode + ", durationMs=" + durationMs;
         if(statusCode >= 400) {
             logger.consoleError(responseMetadata);
@@ -580,7 +579,7 @@ public class TowerConnector implements Serializable {
         int statusCode = response.getStatusLine().getStatusCode();
         if(statusCode != 200) {
             EntityUtils.consumeQuietly(response.getEntity());
-            throw new AnsibleTowerException("GET " + TowerLogger.sanitizeEndpoint(buildEndpoint(endpoint))
+            throw new AnsibleTowerException("GET " + TowerLogger.sanitizeUrl(url + buildEndpoint(endpoint))
                 + " returned HTTP " + statusCode);
         }
     }

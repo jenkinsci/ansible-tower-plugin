@@ -113,6 +113,9 @@ class TowerLoggerTest {
         assertThat(TowerLogger.sanitizeMessage(
             "authorization=Bearer-secret password=hunter2 token=abc failure"),
             is("authorization=<redacted> password=<redacted> token=<redacted> failure"));
+        assertThat(TowerLogger.sanitizeUrl(
+            "https://user:password@aap.example.com/api/controller/v2/jobs/?name=private"),
+            is("https://aap.example.com/api/controller/v2/jobs/?name=<redacted>"));
     }
 
     @Test
