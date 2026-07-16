@@ -412,8 +412,8 @@ public class TowerConnector implements Serializable {
                 if(responseObject.containsKey("detail")) {
                     exceptionText+= ": "+ responseObject.getString("detail");
                 }
-            } catch (IOException ioe) {
-                // Ignore if we get an error
+            } catch (IOException | RuntimeException ignored) {
+                // Keep the generic forbidden message when the error body is not valid JSON.
             }
 
             throw new AnsibleTowerException(exceptionText);
