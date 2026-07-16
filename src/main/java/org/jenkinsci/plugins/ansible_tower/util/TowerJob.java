@@ -43,6 +43,16 @@ public class TowerJob  implements Serializable {
         return this.connection.getLogEvents(this.jobId, this.templateType);
     }
 
+    TowerJobStatus pollStatusOnce() throws AnsibleTowerException {
+        if(this.jobId == -1L) { throw new AnsibleTowerException("Job ID was not set"); }
+        return connection.pollJobStatusOnce(this.jobId, this.templateType);
+    }
+
+    Vector<String> getLogsOnce() throws AnsibleTowerException {
+        if(this.jobId == -1L) { throw new AnsibleTowerException("Job ID was not set"); }
+        return connection.getLogEventsOnce(this.jobId, this.templateType);
+    }
+
     public HashMap<String, String> getExports() throws AnsibleTowerException {
         if(this.jobId == -1L) { throw new AnsibleTowerException("Job ID was not set"); }
         return this.connection.getJenkinsExports();

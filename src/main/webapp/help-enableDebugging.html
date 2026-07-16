@@ -1,6 +1,6 @@
 <div>
-    Allow the Tower Connector class (the thing that talks to tower for all jobs) to print debugging messages to the Jenkins log (stdout).<br/>
-    This is useful for debugging connection issues.</br>
-    Messages will be prefixed with "[Ansible-Tower]" for easy finding.
-    <b>This can create alot of data as it logs requests and responses from Tower.</b></br>
+    Allow the Tower Connector class to emit detailed <code>FINE</code> diagnostics to the Jenkins logging system.<br/>
+    To view them, create a Jenkins Log Recorder for <code>org.jenkinsci.plugins.ansible_tower</code> at level <code>FINE</code> or <code>ALL</code>.<br/>
+    Operational warnings and errors are always logged. Payloads, credentials, and tokens are not logged.<br/>
+    Messages are prefixed with "[Ansible-Tower]" for easy filtering.
 </div>

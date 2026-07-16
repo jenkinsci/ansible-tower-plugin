@@ -20,7 +20,7 @@ import org.kohsuke.stapler.DataBoundSetter;
 import org.kohsuke.stapler.QueryParameter;
 import org.kohsuke.stapler.verb.POST;
 
-import javax.annotation.Nonnull;
+import edu.umd.cs.findbugs.annotations.NonNull;
 import java.io.IOException;
 import java.util.Properties;
 
@@ -31,8 +31,8 @@ import static com.cloudbees.plugins.credentials.CredentialsMatchers.instanceOf;
  */
 public class AnsibleTower extends Builder {
 
-	private @Nonnull String towerServer     = DescriptorImpl.towerServer;
-	private @Nonnull String jobTemplate     = DescriptorImpl.jobTemplate;
+	private @NonNull String towerServer     = DescriptorImpl.towerServer;
+	private @NonNull String jobTemplate     = DescriptorImpl.jobTemplate;
 	private String towerCredentialsId       = DescriptorImpl.towerCredentialsId;
 	private String extraVars                = DescriptorImpl.extraVars;
 	private String jobTags                  = DescriptorImpl.jobTags;
@@ -50,7 +50,7 @@ public class AnsibleTower extends Builder {
 
 	/* Legacy constructor from 0.15.0 */
 	public AnsibleTower(
-			@Nonnull String towerServer, @Nonnull String jobTemplate, String towerCredentialsId, String jobType,
+			@NonNull String towerServer, @NonNull String jobTemplate, String towerCredentialsId, String jobType,
 			String extraVars, String jobTags, String skipJobTags, String limit, String inventory, String credential, String scmBranch,
 			Boolean verbose, Boolean importTowerLogs, Boolean removeColor, String templateType,
 			Boolean importWorkflowChildLogs
@@ -75,7 +75,7 @@ public class AnsibleTower extends Builder {
 
 	@DataBoundConstructor
 	public AnsibleTower(
-			@Nonnull String towerServer, @Nonnull String jobTemplate, String towerCredentialsId, String jobType,
+			@NonNull String towerServer, @NonNull String jobTemplate, String towerCredentialsId, String jobType,
 			String extraVars, String jobTags, String skipJobTags, String limit, String inventory, String credential, String scmBranch,
 			Boolean verbose, String importTowerLogs, Boolean removeColor, String templateType,
 			Boolean importWorkflowChildLogs
@@ -98,9 +98,9 @@ public class AnsibleTower extends Builder {
 		this.importWorkflowChildLogs = importWorkflowChildLogs;
 	}
 
-	@Nonnull
+	@NonNull
 	public String getTowerServer() { return towerServer; }
-	@Nonnull
+	@NonNull
 	public String getJobTemplate() { return jobTemplate; }
 	public String getTowerCredentialsId() { return towerCredentialsId; }
 	public String getExtraVars() { return extraVars; }
