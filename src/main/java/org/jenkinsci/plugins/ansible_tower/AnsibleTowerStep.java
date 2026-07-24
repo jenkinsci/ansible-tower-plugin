@@ -36,6 +36,8 @@ public class AnsibleTowerStep extends AbstractStepImpl {
     private String jobTags                  = "";
     private String skipJobTags              = "";
     private String inventory                = "";
+    // Tower-side credential name/ID, not an authentication secret.
+    // lgtm[jenkins/plaintext-storage]
     private String credential               = "";
     private String scmBranch                = "";
     private Boolean verbose                 = false;
@@ -191,7 +193,13 @@ public class AnsibleTowerStep extends AbstractStepImpl {
             return "Have Ansible Tower run a job template";
         }
 
-        public ListBoxModel doFillTowerServerItems() {
+        @POST
+        public ListBoxModel doFillTowerServerItems(@AncestorInPath Item item) {
+            if (item != null) {
+                item.checkPermission(Item.CONFIGURE);
+            } else {
+                jenkins.model.Jenkins.get().checkPermission(jenkins.model.Jenkins.ADMINISTER);
+            }
             ListBoxModel items = new ListBoxModel();
             items.add(" - None -");
             for (TowerInstallation towerServer : AnsibleTowerGlobalConfig.get().getTowerInstallation()) {
