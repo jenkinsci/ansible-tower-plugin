@@ -40,6 +40,8 @@ public class AnsibleTower extends Builder {
 	private String jobType                  = DescriptorImpl.jobType;
     private String limit                    = DescriptorImpl.limit;
     private String inventory                = DescriptorImpl.inventory;
+    // Tower-side credential name/ID, not an authentication secret.
+    // lgtm[jenkins/plaintext-storage]
     private String credential               = DescriptorImpl.credential;
 	private String scmBranch                = DescriptorImpl.scmBranch;
     private Boolean verbose                 = DescriptorImpl.verbose;
@@ -218,7 +220,13 @@ public class AnsibleTower extends Builder {
         @Override
         public String getDisplayName() { return "Ansible Tower"; }
 
-        public ListBoxModel doFillTowerServerItems() {
+        @POST
+        public ListBoxModel doFillTowerServerItems(@AncestorInPath Item item) {
+			if (item != null) {
+				item.checkPermission(Item.CONFIGURE);
+			} else {
+				jenkins.model.Jenkins.get().checkPermission(jenkins.model.Jenkins.ADMINISTER);
+			}
 			ListBoxModel items = new ListBoxModel();
 			items.add(" - None -");
 			for(TowerInstallation towerServer : AnsibleTowerGlobalConfig.get().getTowerInstallation()) {

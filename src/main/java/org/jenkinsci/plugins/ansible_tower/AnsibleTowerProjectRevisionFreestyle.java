@@ -124,7 +124,13 @@ public class AnsibleTowerProjectRevisionFreestyle extends Builder {
         @Override
         public String getDisplayName() { return "Ansible Tower Project Revision"; }
 
-        public ListBoxModel doFillTowerServerItems() {
+        @POST
+        public ListBoxModel doFillTowerServerItems(@AncestorInPath Item item) {
+			if (item != null) {
+				item.checkPermission(Item.CONFIGURE);
+			} else {
+				jenkins.model.Jenkins.get().checkPermission(jenkins.model.Jenkins.ADMINISTER);
+			}
 			ListBoxModel items = new ListBoxModel();
 			items.add(" - None -");
 			for(TowerInstallation towerServer : AnsibleTowerGlobalConfig.get().getTowerInstallation()) {

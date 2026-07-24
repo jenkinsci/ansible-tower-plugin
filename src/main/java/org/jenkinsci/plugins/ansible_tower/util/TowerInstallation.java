@@ -37,6 +37,11 @@ public class TowerInstallation extends AbstractDescribableImpl<TowerInstallation
     private final String towerURL;
     private String towerApiBasePath;
     private String towerCredentialsId;
+    /**
+     * Retained only so Jenkins can load configuration written by older plugin versions.
+     * Certificate validation is always enforced.
+     */
+    @Deprecated
     private final boolean towerTrustCert;
     private final boolean enableDebugging;
     private Run run;
@@ -71,6 +76,7 @@ public class TowerInstallation extends AbstractDescribableImpl<TowerInstallation
         return this.towerCredentialsId;
     }
 
+    @Deprecated
     public boolean getTowerTrustCert() {
         return this.towerTrustCert;
     }
@@ -143,14 +149,13 @@ public class TowerInstallation extends AbstractDescribableImpl<TowerInstallation
                 @QueryParameter("towerURL") final String towerURL,
                 @QueryParameter("towerApiBasePath") final String towerApiBasePath,
                 @QueryParameter("towerCredentialsId") final String towerCredentialsId,
-                @QueryParameter("towerTrustCert") final boolean towerTrustCert,
                 @QueryParameter("enableDebugging") final boolean enableDebugging
         ) {
             // Also, validate that we are an Administrator
             Jenkins.getInstance().checkPermission(Jenkins.ADMINISTER);
             TowerLogger.writeMessage("Testing Tower connection: url=" + towerURL
-                + ", trustCertificate=" + towerTrustCert + ", debugging=" + enableDebugging);
-            TowerConnector testConnector = TowerInstallation.getTowerConnectorStatic(towerURL, towerCredentialsId, towerTrustCert, enableDebugging, null, towerApiBasePath);
+                + ", debugging=" + enableDebugging);
+            TowerConnector testConnector = TowerInstallation.getTowerConnectorStatic(towerURL, towerCredentialsId, false, enableDebugging, null, towerApiBasePath);
             try {
                 testConnector.testConnection();
                 return FormValidation.ok("Success");

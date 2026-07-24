@@ -10,3 +10,6 @@
 .java-version
 #VSCODE IDE
 .vscode/
+
+# Local security scan reports
+*.sarif

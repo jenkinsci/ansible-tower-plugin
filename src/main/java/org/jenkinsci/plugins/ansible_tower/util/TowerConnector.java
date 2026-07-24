@@ -22,32 +22,25 @@ import java.net.URISyntaxException;
 import java.net.URLEncoder;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
-import java.security.KeyStore;
 import java.util.*;
 
 import net.sf.json.JSONObject;
 import org.apache.commons.codec.binary.Base64;
 
 import org.apache.http.HttpResponse;
-import org.apache.http.HttpVersion;
-import org.apache.http.conn.ClientConnectionManager;
-import org.apache.http.conn.scheme.Scheme;
-import org.apache.http.conn.scheme.SchemeRegistry;
-import org.apache.http.conn.ssl.SSLSocketFactory;
 import org.apache.http.entity.StringEntity;
 import org.apache.http.impl.client.DefaultHttpClient;
 
-import org.apache.http.impl.conn.tsccm.ThreadSafeClientConnManager;
 import org.apache.http.params.BasicHttpParams;
 import org.apache.http.params.HttpParams;
-import org.apache.http.params.HttpProtocolParams;
 import org.apache.http.params.HttpConnectionParams;
 import org.apache.http.conn.params.ConnManagerParams;
-import org.apache.http.protocol.HTTP;
 import org.apache.http.util.EntityUtils;
 import org.jenkinsci.plugins.ansible_tower.exceptions.AnsibleTowerItemDoesNotExist;
 
 public class TowerConnector implements Serializable {
+    private static final long serialVersionUID = 1L;
+
     // If adding a new method, make sure to update getMethodName()
     public static final int GET = 1;
     public static final int POST = 2;
@@ -61,16 +54,15 @@ public class TowerConnector implements Serializable {
     private static final int MAX_TRANSIENT_GATEWAY_RETRIES = 5;
     private static final long TRANSIENT_GATEWAY_RETRY_DELAY_MS = 10000L;
 
-    private String authorizationHeader = null;
-    private String oauthToken = null;
-    private String oAuthTokenID = null;
-    private String oAuthTokenBaseEndpoint = null;
+    private transient String authorizationHeader = null;
+    private transient String oauthToken = null;
+    private transient String oAuthTokenID = null;
+    private transient String oAuthTokenBaseEndpoint = null;
     private String url = null;
     private String apiBasePath = API_BASE_PATH_LEGACY;
-    private String username = null;
-    private String password = null;
+    private transient String username = null;
+    private transient String password = null;
     private TowerVersion towerVersion = null;
-    private boolean trustAllCerts = true;
     private boolean importChildWorkflowLogs = false;
     private TowerLogger logger = new TowerLogger();
     private HashMap<Long, Set<Long>> processedWorkflowNodeIds = new HashMap<Long, Set<Long>>();
@@ -93,7 +85,6 @@ public class TowerConnector implements Serializable {
         this.username = username;
         this.password = password;
         this.oauthToken = oauthToken;
-        this.trustAllCerts = trustAllCerts;
         this.setDebug(debug);
         try {
             this.getVersion();
@@ -104,8 +95,12 @@ public class TowerConnector implements Serializable {
         logger.debug("Created Tower connector: url=" + url);
     }
 
+    /**
+     * @deprecated Certificate validation is always enforced.
+     */
+    @Deprecated
     public void setTrustAllCerts(boolean trustAllCerts) {
-        this.trustAllCerts = trustAllCerts;
+        // Retained for binary compatibility with callers compiled against older releases.
     }
     public void setDebug(boolean debug) {
         logger.setDebugging(debug);
@@ -141,39 +136,9 @@ public class TowerConnector implements Serializable {
     }
 
     private DefaultHttpClient getHttpClient() throws AnsibleTowerException {
-        URI myURI = null;
-        try {
-            myURI = new URI(url);
-        } catch(URISyntaxException urise) {
-            throw new AnsibleTowerException("Unable to prase base url: "+ urise);
-        }
-
         HttpParams params = new BasicHttpParams();
         configureHttpTimeouts(params);
-        if(trustAllCerts && myURI.getScheme().equalsIgnoreCase("https")) {
-            logger.debug("Forcing cert trust");
-            TrustingSSLSocketFactory sf;
-            try {
-                KeyStore trustStore = KeyStore.getInstance(KeyStore.getDefaultType());
-                trustStore.load(null, null);
-                sf = new TrustingSSLSocketFactory(trustStore);
-            } catch(Exception e) {
-                throw new AnsibleTowerException("Unable to create trusting SSL socket factory");
-            }
-            sf.setHostnameVerifier(SSLSocketFactory.ALLOW_ALL_HOSTNAME_VERIFIER);
-
-            HttpProtocolParams.setVersion(params, HttpVersion.HTTP_1_1);
-            HttpProtocolParams.setContentCharset(params, HTTP.UTF_8);
-
-            SchemeRegistry registry = new SchemeRegistry();
-            registry.register(new Scheme("https", sf, 443));
-
-            ClientConnectionManager ccm = new ThreadSafeClientConnManager(params, registry);
-
-            return new DefaultHttpClient(ccm, params);
-        } else {
-            return new DefaultHttpClient(params);
-        }
+        return new DefaultHttpClient(params);
     }
 
     static void configureHttpTimeouts(HttpParams params) {

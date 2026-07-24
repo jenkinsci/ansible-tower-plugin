@@ -53,10 +53,9 @@ Each configured installation has the following fields:
 | URL | Controller or AAP gateway base URL, without an API path; for example `https://aap.example.com`. |
 | API Base Path | Use `/api/v2` for Tower/AWX or `/api/controller/v2` for AAP 2.5+ controller APIs. |
 | Credentials | Default Jenkins credential for this installation. Pipeline and Freestyle steps can override it. |
-| Force Trust Cert | Disables normal TLS certificate validation. Use only for controlled test environments. |
 | Enable Debugging | Allows detailed `FINE` diagnostics. A Jenkins Log Recorder must also enable `FINE` or `ALL`. |
 
-Use **Test Connection** to verify the URL, API path, TLS setting, and credential.
+Use **Test Connection** to verify the URL, API path, TLS certificate, and credential.
 
 ### AAP 2.5+
 
