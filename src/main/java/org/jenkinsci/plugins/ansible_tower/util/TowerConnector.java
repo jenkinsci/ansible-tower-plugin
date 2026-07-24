@@ -39,6 +39,8 @@ import org.apache.http.util.EntityUtils;
 import org.jenkinsci.plugins.ansible_tower.exceptions.AnsibleTowerItemDoesNotExist;
 
 public class TowerConnector implements Serializable {
+    private static final long serialVersionUID = 1L;
+
     // If adding a new method, make sure to update getMethodName()
     public static final int GET = 1;
     public static final int POST = 2;
@@ -61,7 +63,6 @@ public class TowerConnector implements Serializable {
     private transient String username = null;
     private transient String password = null;
     private TowerVersion towerVersion = null;
-    private boolean trustAllCerts = true;
     private boolean importChildWorkflowLogs = false;
     private TowerLogger logger = new TowerLogger();
     private HashMap<Long, Set<Long>> processedWorkflowNodeIds = new HashMap<Long, Set<Long>>();
@@ -84,7 +85,6 @@ public class TowerConnector implements Serializable {
         this.username = username;
         this.password = password;
         this.oauthToken = oauthToken;
-        this.trustAllCerts = trustAllCerts;
         this.setDebug(debug);
         try {
             this.getVersion();
@@ -95,8 +95,12 @@ public class TowerConnector implements Serializable {
         logger.debug("Created Tower connector: url=" + url);
     }
 
+    /**
+     * @deprecated Certificate validation is always enforced.
+     */
+    @Deprecated
     public void setTrustAllCerts(boolean trustAllCerts) {
-        this.trustAllCerts = trustAllCerts;
+        // Retained for binary compatibility with callers compiled against older releases.
     }
     public void setDebug(boolean debug) {
         logger.setDebugging(debug);
@@ -132,18 +136,8 @@ public class TowerConnector implements Serializable {
     }
 
     private DefaultHttpClient getHttpClient() throws AnsibleTowerException {
-        URI myURI = null;
-        try {
-            myURI = new URI(url);
-        } catch(URISyntaxException urise) {
-            throw new AnsibleTowerException("Unable to prase base url: "+ urise);
-        }
-
         HttpParams params = new BasicHttpParams();
         configureHttpTimeouts(params);
-        if(trustAllCerts && myURI.getScheme().equalsIgnoreCase("https")) {
-            logger.warning("Ignoring the insecure trust-all-certificates setting; standard TLS validation is enforced");
-        }
         return new DefaultHttpClient(params);
     }
 

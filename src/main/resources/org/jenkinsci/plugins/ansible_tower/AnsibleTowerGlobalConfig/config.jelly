@@ -16,16 +16,13 @@
                     <f:entry title="${%Credentials}" field="towerCredentialsId">
                         <c:select/>
                     </f:entry>
-                    <f:entry title="${%Force Trust Cert}" field="towerTrustCert" help="/plugin/ansible-tower/help-trustCert.html">
-                        <f:checkbox/>
-                    </f:entry>
                     <f:entry title="${%Enable Debugging}" field="enableDebugging" help="/plugin/ansible-tower/help-enableDebugging.html">
                         <f:checkbox/>
                     </f:entry>
 
                     <f:validateButton
                             title="${%Test Connection}" progress="${%Testing...}"
-                            method="testTowerConnection" with="towerURL,towerApiBasePath,towerCredentialsId,towerTrustCert,enableDebugging" />
+                            method="testTowerConnection" with="towerURL,towerApiBasePath,towerCredentialsId,enableDebugging" />
 
                     <f:entry>
                         <div align="right">
