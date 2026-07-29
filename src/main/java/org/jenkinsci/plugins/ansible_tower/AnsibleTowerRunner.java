@@ -87,11 +87,6 @@ public class AnsibleTowerRunner {
         TowerConnector myTowerConnection = towerConfigToRunOn.getTowerConnector();
         myTowerConnection.setConsole(logger);
         this.myJob = new TowerJob(myTowerConnection);
-        try {
-            this.myJob.setTemplateType(templateType);
-        } catch (AnsibleTowerException e) {
-            return fail(logger, "Invalid template type: " + e.getMessage());
-        }
 
         // Check the import logs settings
         if (!(importTowerLogs.matches("false") || importTowerLogs.matches("true") || importTowerLogs.matches("vars") || importTowerLogs.matches("full"))) {
@@ -177,13 +172,17 @@ public class AnsibleTowerRunner {
         // Get the job template.
         JSONObject template;
         try {
-            template = myTowerConnection.getJobTemplate(expandedJobTemplate, templateType);
+            TowerConnector.ResolvedTemplate resolvedTemplate =
+                myTowerConnection.resolveJobTemplate(expandedJobTemplate, templateType);
+            template = resolvedTemplate.getTemplate();
+            templateType = resolvedTemplate.getTemplateType();
+            this.myJob.setTemplateType(templateType);
         } catch (AnsibleTowerException e) {
             myTowerConnection.releaseToken();
-            return failOperation(logger, "Job was not launched because the " + templateType
-                + " template lookup failed", e);
+            return failOperation(logger, "Job was not launched because template lookup failed", e);
         }
-        milestone(logger, "Job template resolved: templateId=" + template.getLong("id"));
+        milestone(logger, "Job template resolved: templateId=" + template.getLong("id")
+            + ", templateType=" + templateType);
 
 
         if (jobType != null && template.containsKey("ask_job_type_on_launch") && !template.getBoolean("ask_job_type_on_launch")) {

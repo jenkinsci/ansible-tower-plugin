@@ -74,6 +74,22 @@ The configured API path also controls generated UI links:
 - AAP workflow: `/execution/jobs/workflow/<id>/output`
 - AAP job: `/execution/jobs/playbook/<id>/output`
 
+### Controller compatibility
+
+| Platform | API base path | Token endpoint | Compatibility notes |
+| --- | --- | --- | --- |
+| Ansible Tower 3.8.6 | `/api/v2` | `/api/v2/tokens/` | Legacy mode remains supported, including compatibility fallbacks for installations older than 3.8.6. |
+| AWX 24.6.1 | `/api/v2` | `/api/v2/tokens/` | Uses the Tower/AWX API mode. AWX 24.6.1 is the latest release from the pre-refactoring release line. |
+| AAP 2.5–2.6 | `/api/controller/v2` | `/api/gateway/v1/tokens/` | Controller requests and authentication are routed through platform gateway. |
+| AAP 2.7+ | `/api/controller/v2` | `/api/gateway/v1/tokens/` | Gateway URL and gateway-issued bearer tokens are mandatory; direct component API authentication is not supported. |
+
+API migration notes:
+
+- `/api/v2/authtoken/` was deprecated in Tower 3.3 in favor of OAuth tokens and is absent from current Tower/AAP APIs. It is retained only as a fallback for genuinely old Tower/AWX installations.
+- AAP token creation moved from controller OAuth paths such as `/api/v2/o` to `/api/gateway/v1/tokens/` in AAP 2.5–2.6.
+- AAP 2.7 removed direct external access to component `/api/v2` routes, component Basic/session authentication, and component-level personal access tokens/OAuth applications.
+- Job, workflow, unified-template, project-update, inventory-update, and event resources used by this plugin remain under the controller v2 API routed through `/api/controller/v2`.
+
 ## Authentication
 
 The plugin accepts these Jenkins credential types:
@@ -88,11 +104,10 @@ To configure username/password authentication:
 4. Select the new credential in the global Ansible Tower installation.
 5. Use **Test Connection** to validate it.
 
-When a username/password credential is selected, the plugin attempts authentication in this order:
+When a username/password credential is selected, authentication depends on the configured API mode:
 
-1. Create an OAuth token.
-2. Try the legacy authtoken endpoint when supported.
-3. Fall back to HTTP Basic authentication.
+- AAP (`/api/controller/v2`): create a temporary token through `/api/gateway/v1/tokens/`. A gateway failure is returned directly; the plugin does not fall back to component authtoken or Basic authentication.
+- Tower/AWX (`/api/v2`): create an OAuth token, then retain the legacy authtoken and HTTP Basic fallbacks for older installations.
 
 The account should be a dedicated service account with only the permissions required to read and launch the configured resources.
 
@@ -123,7 +138,7 @@ Freestyle projects provide an **Ansible Tower** build step. Pipeline jobs use `a
 2. Select **Configure**.
 3. Under **Build Steps**, select **Add build step → Ansible Tower**.
 4. Choose the configured Tower/AWX/AAP server and optional credential override.
-5. Select `job` or `workflow`, then enter the template name or numeric ID.
+5. Select `auto`, `job`, or `workflow`, then enter the template name or numeric ID. `auto` uses the unified template API and rejects ambiguous matches.
 6. Configure launch overrides and output import behavior as required.
 7. Save and run the project.
 
@@ -139,7 +154,7 @@ def result = ansibleTower(
     towerCredentialsId: '',
     jobTemplate: 'Deploy application',
     jobType: 'run',
-    templateType: 'job',
+    templateType: 'auto',
     towerLogLevel: 'full',
     extraVars: '''---
 deployment_environment: uat
@@ -164,10 +179,10 @@ echo "AAP result: ${result}"
 | `towerCredentialsId` | Required; `''` uses global credential | Optional per-build credential override. |
 | `jobTemplate` | Required | Template name or numeric ID. |
 | `jobType` | `run` or `check`; default `run` | Job launch type. |
-| `templateType` | `job` or `workflow`; default `job` | Selects job template or workflow job template APIs. |
+| `templateType` | `auto`, `job`, or `workflow`; default `job` | `auto` detects the launchable type through `unified_job_templates`; an ambiguous name must use an explicit type. The default remains `job` for compatibility with existing jobs. |
 | `extraVars` | Empty | YAML or JSON launch variables. |
 | `inventory` | Empty | Inventory name or numeric ID. |
-| `credential` | Empty | Controller credential name or numeric ID. Multiple credentials may be comma-separated where supported. |
+| `credential` | Empty | Controller credential name or numeric ID. Multiple credentials may be comma-separated. AAP launch requests use the modern `credentials` array. |
 | `limit` | Empty | Host limit passed at launch. |
 | `jobTags` | Empty | Job tags passed at launch. |
 | `skipJobTags` | Empty | Tags to skip. |

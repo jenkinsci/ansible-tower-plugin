@@ -47,6 +47,7 @@ public class TowerConnector implements Serializable {
     public static final int PATCH = 3;
     public static final String JOB_TEMPLATE_TYPE = "job";
     public static final String WORKFLOW_TEMPLATE_TYPE = "workflow";
+    public static final String AUTO_TEMPLATE_TYPE = "auto";
     public static final String API_BASE_PATH_LEGACY = "/api/v2";
     public static final String API_BASE_PATH_AAP_CONTROLLER = "/api/controller/v2";
     public static final String API_GATEWAY_TOKEN_ENDPOINT = "/api/gateway/v1/tokens/";
@@ -67,6 +68,7 @@ public class TowerConnector implements Serializable {
     private TowerLogger logger = new TowerLogger();
     private HashMap<Long, Set<Long>> processedWorkflowNodeIds = new HashMap<Long, Set<Long>>();
     private HashMap<Long, Long> logIdForJobs = new HashMap<Long, Long>();
+    private HashMap<String, Long> logIdForUpdates = new HashMap<String, Long>();
     private HashMap<Long, Boolean> completedJobFailures = new HashMap<Long, Boolean>();
 
     private boolean removeColor = true;
@@ -266,8 +268,17 @@ public class TowerConnector implements Serializable {
                 } else if(this.username != null && this.password != null) {
                     // Second, if we have a username and a password we can try to go get a token
 
+                    if(isAAPControllerMode(this.apiBasePath)) {
+                        try {
+                            this.authorizationHeader = "Bearer " + this.getOAuthToken();
+                        } catch(AnsibleTowerException ate) {
+                            throw new AnsibleTowerException(
+                                "Unable to authenticate through the AAP platform gateway: " + ate.getMessage(), ate);
+                        }
+                    }
+
                     // AAP controller mode uses the gateway token endpoint directly. Legacy Tower/AWX still probes /api/o/.
-                    if (!shouldProbeOAuthSupport(this.apiBasePath) || this.towerSupports("/api/o/")) {
+                    if (this.authorizationHeader == null && this.towerSupports("/api/o/")) {
                         logger.debug("Requesting an OAuth token");
                         try {
                             this.authorizationHeader = "Bearer " + this.getOAuthToken();
@@ -478,11 +489,22 @@ public class TowerConnector implements Serializable {
 
         // This will run an authentication test
         logger.debug("Testing authentication");
-        HttpResponse response = makeRequest(GET, "jobs/");
-        if(response.getStatusLine().getStatusCode() != 200) {
-            throw new AnsibleTowerException("Failed to get authenticated connection ("+ response.getStatusLine().getStatusCode() +")");
+        try {
+            HttpResponse response = makeRequest(GET, isAAPControllerMode(this.apiBasePath) ? "/" : "jobs/");
+            if(response.getStatusLine().getStatusCode() != 200) {
+                throw new AnsibleTowerException("Failed to get authenticated connection ("+ response.getStatusLine().getStatusCode() +")");
+            }
+            if(isAAPControllerMode(this.apiBasePath)) {
+                JSONObject apiRoot = JSONObject.fromObject(EntityUtils.toString(response.getEntity()));
+                if(!apiRoot.containsKey("job_templates") || !apiRoot.containsKey("unified_job_templates")) {
+                    throw new AnsibleTowerException("Configured AAP controller API root is missing required template endpoints");
+                }
+            }
+        } catch(IOException ioe) {
+            throw new AnsibleTowerException("Unable to read the AAP controller API root", ioe);
+        } finally {
+            releaseToken();
         }
-        releaseToken();
     }
 
     public String convertPotentialStringToID(String idToCheck, String api_endpoint) throws AnsibleTowerException, AnsibleTowerItemDoesNotExist {
@@ -551,12 +573,33 @@ public class TowerConnector implements Serializable {
         }
     }
 
-    public JSONObject getJobTemplate(String jobTemplate, String templateType) throws AnsibleTowerException {
+    public static final class ResolvedTemplate {
+        private final JSONObject template;
+        private final String templateType;
+
+        ResolvedTemplate(JSONObject template, String templateType) {
+            this.template = template;
+            this.templateType = templateType;
+        }
+
+        public JSONObject getTemplate() { return template; }
+        public String getTemplateType() { return templateType; }
+    }
+
+    public ResolvedTemplate resolveJobTemplate(String jobTemplate, String templateType) throws AnsibleTowerException {
         if(jobTemplate == null || jobTemplate.isEmpty()) {
             throw new AnsibleTowerException("Template can not be null");
         }
 
-        checkTemplateType(templateType);
+        if(templateType == null) {
+            throw new AnsibleTowerException("Template type can not be null");
+        }
+        if(templateType.equalsIgnoreCase(AUTO_TEMPLATE_TYPE)) {
+            templateType = detectTemplateType(jobTemplate);
+        } else {
+            checkTemplateType(templateType);
+            templateType = templateType.toLowerCase(Locale.ENGLISH);
+        }
         String apiEndPoint = "/job_templates/";
         if(templateType.equalsIgnoreCase(WORKFLOW_TEMPLATE_TYPE)) {
             apiEndPoint = "/workflow_job_templates/";
@@ -579,9 +622,65 @@ public class TowerConnector implements Serializable {
         String json;
         try {
             json = EntityUtils.toString(response.getEntity());
-            return JSONObject.fromObject(json);
+            return new ResolvedTemplate(JSONObject.fromObject(json), templateType);
         } catch (IOException ioe) {
             throw new AnsibleTowerException("Unable to read template response and convert it into json: " + ioe.getMessage());
+        }
+    }
+
+    public JSONObject getJobTemplate(String jobTemplate, String templateType) throws AnsibleTowerException {
+        return resolveJobTemplate(jobTemplate, templateType).getTemplate();
+    }
+
+    private String detectTemplateType(String jobTemplate) throws AnsibleTowerException {
+        String query;
+        try {
+            Integer.parseInt(jobTemplate);
+            query = "?id=" + URLEncoder.encode(jobTemplate, "UTF-8");
+        } catch(NumberFormatException nfe) {
+            try {
+                query = "?name=" + URLEncoder.encode(jobTemplate, "UTF-8");
+            } catch(UnsupportedEncodingException uee) {
+                throw new AnsibleTowerException("Unable to encode template reference", uee);
+            }
+        } catch(UnsupportedEncodingException uee) {
+            throw new AnsibleTowerException("Unable to encode template reference", uee);
+        }
+
+        HttpResponse response;
+        try {
+            response = makeRequest(GET, "/unified_job_templates/" + query);
+        } catch(AnsibleTowerItemDoesNotExist missingUnifiedApi) {
+            throw new AnsibleTowerException(
+                "Automatic template type detection is not supported by this controller; set templateType to job or workflow",
+                missingUnifiedApi);
+        }
+        requireSuccessfulLookup(response, "/unified_job_templates/" + query);
+        try {
+            JSONObject responseObject = JSONObject.fromObject(EntityUtils.toString(response.getEntity()));
+            if(!responseObject.containsKey("results")) {
+                throw new AnsibleTowerException("Unified template response does not contain results");
+            }
+            List<String> launchableTypes = new ArrayList<String>();
+            for(Object resultObject : responseObject.getJSONArray("results")) {
+                JSONObject result = (JSONObject) resultObject;
+                String unifiedType = result.optString("type", "");
+                if("job_template".equals(unifiedType)) {
+                    launchableTypes.add(JOB_TEMPLATE_TYPE);
+                } else if("workflow_job_template".equals(unifiedType)) {
+                    launchableTypes.add(WORKFLOW_TEMPLATE_TYPE);
+                }
+            }
+            if(launchableTypes.isEmpty()) {
+                throw new AnsibleTowerException("No launchable job or workflow template matched " + jobTemplate);
+            }
+            if(launchableTypes.size() > 1) {
+                throw new AnsibleTowerException("Template " + jobTemplate
+                    + " is ambiguous across job and workflow templates; specify templateType explicitly");
+            }
+            return launchableTypes.get(0);
+        } catch(IOException ioe) {
+            throw new AnsibleTowerException("Unable to read unified template response", ioe);
         }
     }
 
@@ -639,6 +738,8 @@ public class TowerConnector implements Serializable {
         credentials.put("machine", new Vector<Long>());
         credentials.put("extra", new Vector<Long>());
         for(String credentialString : credential.split(","))  {
+            credentialString = credentialString.trim();
+            if(credentialString.isEmpty()) { continue; }
             try {
                 JSONObject jsonCredential = rawLookupByString(credentialString, "/credentials/");
                 String myCredentialType = null;
@@ -671,6 +772,7 @@ public class TowerConnector implements Serializable {
             We will now check if the version of tower is > 3.5.0 or we have multiple credential types
          */
         if(
+                isAAPControllerMode(this.apiBasePath) || this.towerVersion == null ||
                 this.towerVersion.is_greater_or_equal("3.5.0") ||
                 (credentials.get("machine").size() > 1 || credentials.get("vault").size() > 1)
         ) {
@@ -1137,59 +1239,49 @@ public class TowerConnector implements Serializable {
     }
 
 
-    private Vector<String> logInventorySync(long syncID) throws AnsibleTowerException {
-        Vector<String> events = new Vector<String>();
-        // These are not normal logs, so we don't need to paginate
-        String apiURL = "/inventory_updates/"+ syncID +"/";
-        HttpResponse response = makeRequest(GET, apiURL);
-        if(response.getStatusLine().getStatusCode() == 200) {
-            JSONObject responseObject;
-            String json;
-            try {
-                json = EntityUtils.toString(response.getEntity());
-                responseObject = JSONObject.fromObject(json);
-            } catch(IOException ioe) {
-                throw new AnsibleTowerException("Unable to read response and convert it into json: "+ ioe.getMessage());
-            }
-
-            logger.debug("Inventory sync output received: syncId=" + syncID
-                + ", hasStdout=" + responseObject.containsKey("result_stdout"));
-
-            if(responseObject.containsKey("result_stdout")) {
-                events.addAll(logLine(responseObject.getString("result_stdout")));
-            }
-        } else {
-            throw logImportFailure("inventory update: syncId=" + syncID
-                + ", endpoint=" + buildEndpoint(apiURL), response);
-        }
-        return events;
+    Vector<String> logInventorySync(long syncID) throws AnsibleTowerException {
+        return logUpdateEvents("inventory_updates", syncID);
     }
 
 
-    private Vector<String> logProjectSync(long syncID) throws AnsibleTowerException {
+    Vector<String> logProjectSync(long syncID) throws AnsibleTowerException {
+        return logUpdateEvents("project_updates", syncID);
+    }
+
+    private Vector<String> logUpdateEvents(String resource, long syncID) throws AnsibleTowerException {
         Vector<String> events = new Vector<String>();
-        // These are not normal logs, so we don't need to paginate
-        String apiURL = "/project_updates/"+ syncID +"/";
-        HttpResponse response = makeRequest(GET, apiURL);
-        if(response.getStatusLine().getStatusCode() == 200) {
-            JSONObject responseObject;
-            String json;
-            try {
-                json = EntityUtils.toString(response.getEntity());
-                responseObject = JSONObject.fromObject(json);
-            } catch(IOException ioe) {
-                throw new AnsibleTowerException("Unable to read response and convert it into json: "+ ioe.getMessage());
+        if(this.logIdForUpdates == null) {
+            this.logIdForUpdates = new HashMap<String, Long>();
+        }
+        String logKey = resource + ":" + syncID;
+        long highestEventId = this.logIdForUpdates.containsKey(logKey) ? this.logIdForUpdates.get(logKey) : 0L;
+        String apiURL = "/" + resource + "/" + syncID + "/events/?id__gt=" + highestEventId;
+        while(apiURL != null) {
+            HttpResponse response = makeRequest(GET, apiURL);
+            if(response.getStatusLine().getStatusCode() == 200) {
+                JSONObject responseObject;
+                try {
+                    responseObject = JSONObject.fromObject(EntityUtils.toString(response.getEntity()));
+                } catch(IOException ioe) {
+                    throw new AnsibleTowerException("Unable to read update events response", ioe);
+                }
+                if(responseObject.containsKey("results")) {
+                    for(Object eventValue : responseObject.getJSONArray("results")) {
+                        JSONObject event = (JSONObject) eventValue;
+                        if(event.containsKey("id")) {
+                            highestEventId = Math.max(highestEventId, event.getLong("id"));
+                        }
+                        if(event.containsKey("stdout")) {
+                            events.addAll(logLine(event.getString("stdout")));
+                        }
+                    }
+                    this.logIdForUpdates.put(logKey, highestEventId);
+                }
+                apiURL = nextPage(responseObject);
+            } else {
+                throw logImportFailure(resource + ": syncId=" + syncID
+                    + ", endpoint=" + buildEndpoint(apiURL), response);
             }
-
-            logger.debug("Project sync output received: syncId=" + syncID
-                + ", hasStdout=" + responseObject.containsKey("result_stdout"));
-
-            if(responseObject.containsKey("result_stdout")) {
-                events.addAll(logLine(responseObject.getString("result_stdout")));
-            }
-        } else {
-            throw logImportFailure("project update: syncId=" + syncID
-                + ", endpoint=" + buildEndpoint(apiURL), response);
         }
         return events;
     }

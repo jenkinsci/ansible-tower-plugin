@@ -210,6 +210,7 @@ public class AnsibleTowerStep extends AbstractStepImpl {
 
         public ListBoxModel doFillTemplateTypeItems() {
             ListBoxModel items = new ListBoxModel();
+            items.add("auto");
             items.add("job");
             items.add("workflow");
             return items;

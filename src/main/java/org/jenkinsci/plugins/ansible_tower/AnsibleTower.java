@@ -235,8 +235,9 @@ public class AnsibleTower extends Builder {
 			return items;
         }
 
-        public ListBoxModel doFillTemplateTypeItems() {
+		public ListBoxModel doFillTemplateTypeItems() {
         	ListBoxModel items = new ListBoxModel();
+			items.add("auto");
         	items.add("job");
         	items.add("workflow");
         	return items;
