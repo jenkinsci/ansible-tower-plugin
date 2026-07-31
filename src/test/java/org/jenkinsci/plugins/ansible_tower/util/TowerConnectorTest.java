@@ -9,6 +9,7 @@ import java.net.SocketTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.util.Vector;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import javax.net.ssl.SSLHandshakeException;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
@@ -387,5 +388,152 @@ class TowerConnectorTest {
         MatcherAssert.assertThat(message, CoreMatchers.is(
                 "job_status_poll exhausted retries: jobId=720828, templateType=job, "
                 + "endpoint=/api/controller/v2/jobs/720828/, httpStatus=504, attempts=6"));
+    }
+
+    @Test
+    public void autoTemplateType_resolvesJobTemplateThroughUnifiedApi() throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/api/controller/v2/ping/", exchange -> respond(exchange, "{\"version\":\"4.6.0\"}"));
+        server.createContext("/api/controller/v2/unified_job_templates/", exchange -> respond(exchange,
+            "{\"count\":1,\"results\":[{\"id\":12,\"type\":\"job_template\"}]}"));
+        server.createContext("/api/controller/v2/job_templates/12/", exchange -> respond(exchange,
+            "{\"id\":12,\"name\":\"deploy\"}"));
+        server.start();
+        try {
+            TowerConnector connector = new TowerConnector(
+                "http://127.0.0.1:" + server.getAddress().getPort(), null, null,
+                "test-token", false, false, TowerConnector.API_BASE_PATH_AAP_CONTROLLER);
+
+            TowerConnector.ResolvedTemplate resolved = connector.resolveJobTemplate(
+                "12", TowerConnector.AUTO_TEMPLATE_TYPE);
+
+            MatcherAssert.assertThat(resolved.getTemplateType(), CoreMatchers.is(TowerConnector.JOB_TEMPLATE_TYPE));
+            MatcherAssert.assertThat(resolved.getTemplate().getLong("id"), CoreMatchers.is(12L));
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    public void autoTemplateType_rejectsAmbiguousJobAndWorkflowNames() throws Exception {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/api/controller/v2/ping/", exchange -> respond(exchange, "{\"version\":\"4.6.0\"}"));
+        server.createContext("/api/controller/v2/unified_job_templates/", exchange -> respond(exchange,
+            "{\"count\":2,\"results\":[{\"id\":12,\"type\":\"job_template\"},"
+                + "{\"id\":13,\"type\":\"workflow_job_template\"}]}"));
+        server.start();
+        try {
+            TowerConnector connector = new TowerConnector(
+                "http://127.0.0.1:" + server.getAddress().getPort(), null, null,
+                "test-token", false, false, TowerConnector.API_BASE_PATH_AAP_CONTROLLER);
+
+            AnsibleTowerException failure = org.junit.jupiter.api.Assertions.assertThrows(
+                AnsibleTowerException.class,
+                () -> connector.resolveJobTemplate("deploy", TowerConnector.AUTO_TEMPLATE_TYPE));
+
+            MatcherAssert.assertThat(failure.getMessage(), CoreMatchers.containsString("ambiguous"));
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    public void aapGatewayTokenFailure_doesNotFallBackToComponentAuth() throws Exception {
+        AtomicInteger componentCalls = new AtomicInteger();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/api/controller/v2/ping/", exchange -> respond(exchange, "{\"version\":\"4.6.0\"}"));
+        server.createContext("/api/gateway/v1/tokens/", exchange -> respond(exchange, 403, "{}"));
+        server.createContext("/api/controller/v2/authtoken/", exchange -> {
+            componentCalls.incrementAndGet();
+            respond(exchange, "{}");
+        });
+        server.createContext("/api/controller/v2/jobs/", exchange -> {
+            componentCalls.incrementAndGet();
+            respond(exchange, "{}");
+        });
+        server.start();
+        try {
+            TowerConnector connector = new TowerConnector(
+                "http://127.0.0.1:" + server.getAddress().getPort(), "user", "password",
+                null, false, false, TowerConnector.API_BASE_PATH_AAP_CONTROLLER);
+
+            AnsibleTowerException failure = org.junit.jupiter.api.Assertions.assertThrows(
+                AnsibleTowerException.class,
+                () -> connector.makeRequest(TowerConnector.GET, "/jobs/", null, false));
+
+            MatcherAssert.assertThat(failure.getMessage(), CoreMatchers.containsString("AAP platform gateway"));
+            MatcherAssert.assertThat(componentCalls.get(), CoreMatchers.is(0));
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    public void projectUpdateEvents_arePaginatedAndDeduplicated() throws Exception {
+        AtomicInteger firstPageCalls = new AtomicInteger();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/api/controller/v2/ping/", exchange -> respond(exchange, "{\"version\":\"4.6.0\"}"));
+        server.createContext("/api/controller/v2/project_updates/9/events/", exchange -> {
+            String query = exchange.getRequestURI().getQuery();
+            if(query != null && query.contains("page=2")) {
+                respond(exchange, "{\"next\":null,\"results\":[{\"id\":2,\"stdout\":\"second\"}]}");
+            } else if(firstPageCalls.incrementAndGet() == 1) {
+                respond(exchange, "{\"next\":\"/api/controller/v2/project_updates/9/events/?page=2\","
+                    + "\"results\":[{\"id\":1,\"stdout\":\"first\"}]}");
+            } else {
+                respond(exchange, "{\"next\":null,\"results\":[]}");
+            }
+        });
+        server.start();
+        try {
+            TowerConnector connector = new TowerConnector(
+                "http://127.0.0.1:" + server.getAddress().getPort(), null, null,
+                "test-token", false, false, TowerConnector.API_BASE_PATH_AAP_CONTROLLER);
+
+            Vector<String> first = connector.logProjectSync(9L);
+            Vector<String> second = connector.logProjectSync(9L);
+
+            MatcherAssert.assertThat(first.toString(), CoreMatchers.containsString("first"));
+            MatcherAssert.assertThat(first.toString(), CoreMatchers.containsString("second"));
+            MatcherAssert.assertThat(second.isEmpty(), CoreMatchers.is(true));
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    @Test
+    public void aapLaunch_usesModernCredentialsFieldAndTrimsReferences() throws Exception {
+        AtomicReference<String> credentialQuery = new AtomicReference<String>();
+        AtomicReference<JSONObject> launchBody = new AtomicReference<JSONObject>();
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/api/controller/v2/ping/", exchange -> respond(exchange, "{\"version\":\"4.6.0\"}"));
+        server.createContext("/api/controller/v2/credential_types/", exchange -> respond(exchange,
+            "{\"count\":2,\"results\":[{\"id\":1,\"kind\":\"ssh\"},{\"id\":2,\"kind\":\"vault\"}]}"));
+        server.createContext("/api/controller/v2/credentials/", exchange -> {
+            credentialQuery.set(exchange.getRequestURI().getQuery());
+            respond(exchange, "{\"count\":1,\"results\":[{\"id\":5,\"credential_type\":1}]}");
+        });
+        server.createContext("/api/controller/v2/job_templates/12/launch/", exchange -> {
+            launchBody.set(JSONObject.fromObject(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8)));
+            respond(exchange, 201, "{\"id\":99}");
+        });
+        server.start();
+        try {
+            TowerConnector connector = new TowerConnector(
+                "http://127.0.0.1:" + server.getAddress().getPort(), null, null,
+                "test-token", false, false, TowerConnector.API_BASE_PATH_AAP_CONTROLLER);
+
+            long jobId = connector.submitTemplate(12L, null, null, null, null, null,
+                null, "  machine cred  ", null, TowerConnector.JOB_TEMPLATE_TYPE);
+
+            MatcherAssert.assertThat(jobId, CoreMatchers.is(99L));
+            MatcherAssert.assertThat(credentialQuery.get(), CoreMatchers.is("name=machine+cred"));
+            MatcherAssert.assertThat(launchBody.get().containsKey("credentials"), CoreMatchers.is(true));
+            MatcherAssert.assertThat(launchBody.get().getJSONArray("credentials").getLong(0), CoreMatchers.is(5L));
+            MatcherAssert.assertThat(launchBody.get().containsKey("credential"), CoreMatchers.is(false));
+            MatcherAssert.assertThat(launchBody.get().containsKey("vault_credential"), CoreMatchers.is(false));
+        } finally {
+            server.stop(0);
+        }
     }
 }

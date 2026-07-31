@@ -2,4 +2,6 @@
     Select the controller API base path for this installation.
     Use <code>/api/v2</code> for existing Tower and AWX installations.
     Use <code>/api/controller/v2</code> for AAP 2.5+ controller deployments.
+    In AAP mode the plugin authenticates through <code>/api/gateway/v1/tokens/</code> and does not
+    fall back to removed component <code>authtoken</code> or Basic-auth flows.
 </div>
