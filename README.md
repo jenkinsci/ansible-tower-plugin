@@ -188,7 +188,7 @@ echo "AAP result: ${result}"
 | `skipJobTags` | Empty | Tags to skip. |
 | `scmBranch` | Empty | SCM branch override. The template must allow prompting for SCM branch. |
 | `towerLogLevel` | `false` | Output import mode described below. |
-| `importWorkflowChildLogs` | `false` | Imports child job output for workflows. |
+| `importWorkflowChildLogs` | Deprecated | Child job output is automatically imported for workflows whenever `towerLogLevel` is not `false`; retained for pipeline compatibility. |
 | `removeColor` | `false` | Removes ANSI color sequences from imported output. |
 | `verbose` | `false` | Adds progress messages, including some expanded launch values, to the Jenkins build console. Avoid placing secrets in launch parameters when this is enabled. |
 | `throwExceptionWhenFail` | `true` | Fails the Pipeline step when the controller operation fails. |

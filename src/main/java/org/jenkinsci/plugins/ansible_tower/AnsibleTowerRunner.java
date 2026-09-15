@@ -47,6 +47,20 @@ public class AnsibleTowerRunner {
         return false;
     }
 
+    /**
+     * A workflow's useful output is produced by its child jobs. Once Tower
+     * output import is enabled, importing only the workflow-node summary is
+     * therefore incomplete. Keep the legacy child-log flag as an affirmative
+     * compatibility signal, but make child output automatic for workflows.
+     */
+    static boolean shouldImportWorkflowChildLogs(String templateType, String importTowerLogs,
+            boolean requestedChildLogs) {
+        if(!TowerConnector.WORKFLOW_TEMPLATE_TYPE.equalsIgnoreCase(templateType)) {
+            return false;
+        }
+        return requestedChildLogs || !"false".equalsIgnoreCase(importTowerLogs);
+    }
+
     private void milestone(PrintStream console, String message) {
         console.println("[Ansible-Tower] INFO: " + TowerLogger.sanitizeMessage(message));
     }
@@ -222,7 +236,9 @@ public class AnsibleTowerRunner {
         //    "ask_verbosity_on_launch": false,
 
         myTowerConnection.setRemoveColor(removeColor);
-        myTowerConnection.setGetWorkflowChildLogs(importWorkflowChildLogs);
+        boolean effectiveImportWorkflowChildLogs = shouldImportWorkflowChildLogs(
+            templateType, importTowerLogs, importWorkflowChildLogs);
+        myTowerConnection.setGetWorkflowChildLogs(effectiveImportWorkflowChildLogs);
 
 
         if (verbose) {
