@@ -104,12 +104,12 @@ public class PluginCompatibilityTest {
 
     @Test
     public void workflowOutputImportIncludesChildLogsWhenTowerOutputIsEnabled() {
-        assertThat(AnsibleTowerRunner.shouldImportWorkflowChildLogs("workflow", "true", false), is(true));
-        assertThat(AnsibleTowerRunner.shouldImportWorkflowChildLogs("workflow", "full", false), is(true));
-        assertThat(AnsibleTowerRunner.shouldImportWorkflowChildLogs("workflow", "vars", false), is(true));
-        assertThat(AnsibleTowerRunner.shouldImportWorkflowChildLogs("workflow", "false", false), is(false));
-        assertThat(AnsibleTowerRunner.shouldImportWorkflowChildLogs("job", "full", false), is(false));
-        assertThat(AnsibleTowerRunner.shouldImportWorkflowChildLogs("job", "false", true), is(false));
+        assertThat(AnsibleTowerRunner.shouldImportWorkflowChildLogs("workflow", "true"), is(true));
+        assertThat(AnsibleTowerRunner.shouldImportWorkflowChildLogs("workflow", "full"), is(true));
+        assertThat(AnsibleTowerRunner.shouldImportWorkflowChildLogs("workflow", "vars"), is(true));
+        assertThat(AnsibleTowerRunner.shouldImportWorkflowChildLogs("workflow", "false"), is(false));
+        assertThat(AnsibleTowerRunner.shouldImportWorkflowChildLogs("workflow", null), is(false));
+        assertThat(AnsibleTowerRunner.shouldImportWorkflowChildLogs("job", "full"), is(false));
     }
 
     @Test
