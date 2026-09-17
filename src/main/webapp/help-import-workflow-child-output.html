@@ -1,5 +1,6 @@
 <div>
-    In addition to logs for the workflow, pull the output from the jobs that the workflow is running into Jenkins.<br/>
-    <b>Caution</b>: this could be alot of data.<br/>
-    Also, please note, this does not happen in real time; the child node logs will only be imported when the steps are completed.
+    For workflow templates, child job output is automatically imported whenever Tower output import is enabled.<br/>
+    This field is retained for compatibility with existing jobs and pipelines; setting it is no longer required.<br/>
+    <b>Caution</b>: this could be a lot of data.<br/>
+    Child node logs are imported after the steps are completed; they are not streamed in real time.
 </div>

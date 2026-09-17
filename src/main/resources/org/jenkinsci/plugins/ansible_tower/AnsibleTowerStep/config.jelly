@@ -42,9 +42,6 @@
     <f:entry field="towerLogLevel" title="Import Tower Output" help="/plugin/ansible-tower/help-import-tower-output.html">
         <f:select />
     </f:entry>
-    <f:entry field="importWorkflowChildLogs" title="Import Workflow Child Output" help="/plugin/ansible-tower/help-import-workflow-child-output.html">
-        <f:checkbox />
-    </f:entry>
     <f:entry field="removeColor" title="Remove Color" help="/plugin/ansible-tower/help-remove-color.html">
         <f:checkbox />
     </f:entry>

@@ -103,6 +103,16 @@ public class PluginCompatibilityTest {
     }
 
     @Test
+    public void workflowOutputImportIncludesChildLogsWhenTowerOutputIsEnabled() {
+        assertThat(AnsibleTowerRunner.shouldImportWorkflowChildLogs("workflow", "true"), is(true));
+        assertThat(AnsibleTowerRunner.shouldImportWorkflowChildLogs("workflow", "full"), is(true));
+        assertThat(AnsibleTowerRunner.shouldImportWorkflowChildLogs("workflow", "vars"), is(true));
+        assertThat(AnsibleTowerRunner.shouldImportWorkflowChildLogs("workflow", "false"), is(false));
+        assertThat(AnsibleTowerRunner.shouldImportWorkflowChildLogs("workflow", null), is(false));
+        assertThat(AnsibleTowerRunner.shouldImportWorkflowChildLogs("job", "full"), is(false));
+    }
+
+    @Test
     public void freestyleConfigurationAndGlobalInstallationRoundTrip(JenkinsRule jenkinsRule) throws Exception {
         TowerInstallation installation = new TowerInstallation(
                 "tower", "https://tower.example.com", "/api/controller/v2", "credential", true, true);

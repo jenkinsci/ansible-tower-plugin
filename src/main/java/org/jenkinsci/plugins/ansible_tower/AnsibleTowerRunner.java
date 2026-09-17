@@ -47,6 +47,19 @@ public class AnsibleTowerRunner {
         return false;
     }
 
+    /**
+     * A workflow's useful output is produced by its child jobs. Once Tower
+     * output import is enabled, importing only the workflow-node summary is
+     * therefore incomplete. The log mode is the single source of truth; the
+     * legacy child-log flag is retained only for API compatibility.
+     */
+    static boolean shouldImportWorkflowChildLogs(String templateType, String logMode) {
+        if(!TowerConnector.WORKFLOW_TEMPLATE_TYPE.equalsIgnoreCase(templateType)) {
+            return false;
+        }
+        return logMode != null && !"false".equalsIgnoreCase(logMode);
+    }
+
     private void milestone(PrintStream console, String message) {
         console.println("[Ansible-Tower] INFO: " + TowerLogger.sanitizeMessage(message));
     }
@@ -55,18 +68,18 @@ public class AnsibleTowerRunner {
             PrintStream logger, String towerServer, String towerCredentialsId, String jobTemplate, String jobType,
             String extraVars, String limit, String jobTags, String skipJobTags, String inventory, String credential, String scmBranch,
             boolean verbose, String importTowerLogs, boolean removeColor, EnvVars envVars, String templateType,
-            boolean importWorkflowChildLogs, FilePath ws, Run<?, ?> run, Properties towerResults
+            boolean legacyImportWorkflowChildLogs, FilePath ws, Run<?, ?> run, Properties towerResults
     ) {
         return this.runJobTemplate(logger, towerServer, towerCredentialsId, jobTemplate, jobType, extraVars, limit,
                 jobTags, skipJobTags, inventory, credential, scmBranch, verbose, importTowerLogs, removeColor, envVars,
-                templateType, importWorkflowChildLogs, ws, run, towerResults, false);
+                templateType, legacyImportWorkflowChildLogs, ws, run, towerResults, false);
     }
     
     public boolean runJobTemplate(
             PrintStream logger, String towerServer, String towerCredentialsId, String jobTemplate, String jobType,
             String extraVars, String limit, String jobTags, String skipJobTags, String inventory, String credential, String scmBranch,
             boolean verbose, String importTowerLogs, boolean removeColor, EnvVars envVars, String templateType,
-            boolean importWorkflowChildLogs, FilePath ws, Run<?, ?> run, Properties towerResults, boolean async
+            boolean legacyImportWorkflowChildLogs, FilePath ws, Run<?, ?> run, Properties towerResults, boolean async
     ) {
         milestone(logger, "Starting job template operation: server=" + towerServer
             + ", template=" + jobTemplate + ", templateType=" + templateType);
@@ -222,7 +235,9 @@ public class AnsibleTowerRunner {
         //    "ask_verbosity_on_launch": false,
 
         myTowerConnection.setRemoveColor(removeColor);
-        myTowerConnection.setGetWorkflowChildLogs(importWorkflowChildLogs);
+        boolean effectiveImportWorkflowChildLogs = shouldImportWorkflowChildLogs(
+            templateType, importTowerLogs);
+        myTowerConnection.setGetWorkflowChildLogs(effectiveImportWorkflowChildLogs);
 
 
         if (verbose) {
